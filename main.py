@@ -5,16 +5,16 @@ from views.whale_view import whale_view_component
 from views.ai_view import ai_view_component
 
 def main(page: ft.Page):
-    # --- PENCERE VE SAYFA AYARLARI ---
+    # WINDOW CONFIGURATION: Fixed size for mobile-app feel
     page.title = "BitPulse"
     page.theme_mode = ft.ThemeMode.DARK
     page.window.width = 400
     page.window.height = 750
     page.window.resizable = False
     page.padding = 0
-    page.bgcolor = "#121212" # Modern koyu arka plan
+    page.bgcolor = "#121212"
 
-    # --- NAVİGASYON VE İÇERİK YÖNETİMİ ---
+    # NAVIGATION AND CONTENT MANAGEMENT
     main_container = ft.Container(expand=True)
 
     def go_back_to_list(e):
@@ -22,51 +22,55 @@ def main(page: ft.Page):
         page.update()
 
     def open_news_detail(item):
-        # Habere tıklandığında detay görünümüne geçiş
+        # Switches the view to the detail page
         main_container.content = news_detail_view_component(item, go_back_to_list)
         page.update()
 
-    # --- VIEW BİLEŞENLERİNİ BAŞLATMA ---
-    # news_view_component'e detay açma fonksiyonunu parametre olarak gönderiyoruz
+    # INITIALIZING VIEW COMPONENTS
+    # Passing the detail function as a parameter
     news_layout, update_news = news_view_component(page, open_news_detail)
     whale_layout = whale_view_component()
     ai_layout = ai_view_component()
 
-    # --- MİLİMETRİK SİMETRİK VE İNCE HEADER ---
+    # PIXEL-PERFECT SYMMETRICAL HEADER
     header = ft.Container(
-        height=50, # Şerit kalınlığı 50 birime sabitlendi
+        height=48, # Standard modern UI header height
         bgcolor="#121212",
-        padding=ft.padding.symmetric(horizontal=10),
-        content=ft.Stack([
-            # Sol: Yenileme Butonu (Dikeyde tam merkez)
-            ft.Container(
-                content=ft.IconButton(
-                    icon=ft.Icons.REFRESH_ROUNDED,
-                    on_click=lambda _: update_news(),
-                    icon_color=ft.Colors.ORANGE_ACCENT,
-                    icon_size=22,
-                    padding=0, # Dikey kaymayı engellemek için iç boşluk sıfırlandı
+        padding=ft.padding.symmetric(horizontal=5),
+        content=ft.Row(
+            alignment=ft.MainAxisAlignment.CENTER,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                # LEFT: Action button with fixed width
+                ft.Container(
+                    content=ft.IconButton(
+                        icon=ft.Icons.REFRESH_ROUNDED,
+                        on_click=lambda _: update_news(),
+                        icon_color=ft.Colors.ORANGE_ACCENT,
+                        icon_size=20,
+                        padding=0,
+                    ),
+                    width=40,
                 ),
-                alignment=ft.alignment.center_left,
-            ),
-            # Orta: Tam Daire Logo (Milimetrik dikey ve yatay merkez)
-            ft.Container(
-                alignment=ft.alignment.center,
-                content=ft.Container(
-                    width=36,  # 50px şerit içinde en dengeli duran logo boyutu
-                    height=36, 
-                    border_radius=18, # Tam daire (Genişliğin tam yarısı)
-                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
-                    content=ft.Image(
-                        src="icon_clean.png", # Yeni daire logon
-                        fit=ft.ImageFit.COVER,
-                    )
+                # CENTER: Circular Logo (Centered via expand)
+                ft.Container(
+                    expand=True,
+                    alignment=ft.alignment.center,
+                    content=ft.Container(
+                        width=32,
+                        height=32,
+                        border_radius=16, # radius = width/2 for a perfect circle
+                        clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                        content=ft.Image(src="icon_clean.png", fit=ft.ImageFit.COVER),
+                    ),
                 ),
-            ),
-        ])
+                # RIGHT: Empty container to balance the Row and center the logo
+                ft.Container(width=40), 
+            ]
+        )
     )
 
-    # --- ALT NAVİGASYON BARI ---
+    # NAVIGATION LOGIC
     def handle_nav_change(e):
         idx = e.control.selected_index
         if idx == 0:
@@ -89,19 +93,17 @@ def main(page: ft.Page):
         ]
     )
 
-    # Başlangıç ekranı ayarı
     main_container.content = news_layout
     
-    # Ekrana ekleme (Boşluk bırakan Divider yerine 1px Container kullanıldı)
+    # Adding the final components to the page
     page.add(
         header,
-        ft.Container(height=1, bgcolor="#222222"), # Görünmez paddingleri olmayan ince çizgi
+        # 1px line to remove the unwanted spacing from ft.Divider
+        ft.Container(height=1, bgcolor="#222222"), 
         main_container
     )
     
-    # İlk verileri yükle
     update_news()
 
 if __name__ == "__main__":
-    # Windows Desktop uygulaması olarak başlatır
     ft.app(target=main, assets_dir="assets")
