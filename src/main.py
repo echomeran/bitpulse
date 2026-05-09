@@ -83,14 +83,14 @@ def main(page: ft.Page):
     header = ft.Container(
         height=48,
         bgcolor="#121212",
-        padding=ft.Padding.symmetric(horizontal=5),
+        padding=ft.padding.symmetric(horizontal=5),
         content=ft.Row(
             alignment=ft.MainAxisAlignment.CENTER,
             controls=[
                 refresh_button_container,
                 ft.Container(
                     expand=True,
-                    alignment=ft.Alignment.CENTER,
+                    alignment=ft.alignment.center,
                     content=ft.Container(
                         width=32,
                         height=32,
@@ -125,5 +125,4 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-
-    ft.run(main, assets_dir="assets")
+    ft.app(main, assets_dir="assets")

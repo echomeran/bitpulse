@@ -12,16 +12,21 @@ client = genai.Client(api_key=api_key)
 
 def create_chat_bubble(text, is_user):
     bubble = ft.Container(
-        content=ft.Text(text, color=ft.Colors.WHITE, size=13, selectable=True),
-        bgcolor="#0078FF" if is_user else "#262626",
-        padding=ft.Padding(12, 12, 12, 12),
-        border_radius=ft.BorderRadius.only(
-            top_left=15,
-            top_right=15,
-            bottom_left=15 if is_user else 5,
-            bottom_right=5 if is_user else 15,
+        content=ft.Text(text, color=ft.Colors.WHITE, size=14, selectable=True),
+        gradient=ft.LinearGradient(
+            begin=ft.alignment.top_left,
+            end=ft.alignment.bottom_right,
+            colors=["#2563EB", "#1D4ED8"] if is_user else ["#0F172A", "#1E293B"]
         ),
-        width=280,
+        padding=ft.padding.all(14),
+        border_radius=ft.border_radius.only(
+            top_left=18,
+            top_right=18,
+            bottom_left=18 if is_user else 4,
+            bottom_right=4 if is_user else 18,
+        ),
+        shadow=ft.BoxShadow(spread_radius=1, blur_radius=10, color=ft.Colors.with_opacity(0.15, ft.Colors.BLACK)),
+        width=290,
     )
 
     bubble.constraints = ft.BoxConstraints(max_width=280)
@@ -34,8 +39,10 @@ def create_chat_bubble(text, is_user):
 
 def build_knowledge_base(user_query, news_list, btc_price):
     context = f"CURRENT BTC PRICE: {btc_price}\n\nLATEST NEWS:\n"
-    for item in news_list[:15]:
-        context += f"- {item['title']}: {item['body']}\n"
+    if isinstance(news_list, list):
+        for item in news_list[:15]:
+            if isinstance(item, dict):
+                context += f"- {item.get('title', '')} (Source: {item.get('publisher', 'Unknown')})\n"
 
     return f"""
     You are the BitPulse AI Expert. 
@@ -63,17 +70,21 @@ def ai_view_component(page: ft.Page):
             typing_indicator = ft.Container(
                 content=ft.Row(
                     [
+                        ft.ProgressRing(width=16, height=16, stroke_width=2, color=ft.Colors.BLUE_400),
                         ft.Text(
-                            "Thinking...",
-                            size=12,
+                            "BitPulse is thinking...",
+                            size=13,
                             italic=True,
-                            color=ft.Colors.GREY_400,
+                            color=ft.Colors.BLUE_300,
                         ),
-                        ft.ProgressRing(width=12, height=12, stroke_width=2),
                     ],
-                    spacing=10,
+                    spacing=12,
                 ),
-                padding=10,
+                padding=ft.padding.all(12),
+                bgcolor="#0F172A",
+                border_radius=20,
+                width=180,
+                shadow=ft.BoxShadow(spread_radius=1, blur_radius=10, color=ft.Colors.with_opacity(0.1, ft.Colors.BLACK))
             )
             chat_list.controls.append(typing_indicator)
             page.update()
@@ -87,7 +98,7 @@ def ai_view_component(page: ft.Page):
 
             try:
                 response = await client.aio.models.generate_content(
-                    model="gemini-3-flash-preview", contents=smart_prompt
+                    model="gemini-2.5-flash", contents=smart_prompt
                 )
 
                 chat_list.controls.remove(typing_indicator)
@@ -105,25 +116,35 @@ def ai_view_component(page: ft.Page):
             page.update()
 
     chat_input = ft.TextField(
-        hint_text="Ask something about crypto...",
+        hint_text="Ask BitPulse something...",
+        hint_style=ft.TextStyle(color=ft.Colors.GREY_600),
         expand=True,
         on_submit=send_message_click,
-        border_radius=15,
-        bgcolor="#1E1E1E",
-        border_color="#333333",
+        border_radius=25,
+        bgcolor="#0F172A",
+        border_color="#1E293B",
+        focused_border_color=ft.Colors.BLUE_500,
+        content_padding=ft.padding.symmetric(horizontal=20, vertical=15),
     )
 
-    send_button = ft.IconButton(
-        icon=ft.Icons.SEND_ROUNDED,
-        on_click=send_message_click,
-        icon_color=ft.Colors.ORANGE_ACCENT,
+    send_button = ft.Container(
+        content=ft.IconButton(
+            icon=ft.Icons.SEND_ROUNDED,
+            on_click=send_message_click,
+            icon_color=ft.Colors.WHITE,
+            icon_size=20,
+        ),
+        bgcolor=ft.Colors.BLUE_600,
+        shape=ft.BoxShape.CIRCLE,
+        margin=ft.padding.only(left=8),
+        shadow=ft.BoxShadow(spread_radius=1, blur_radius=8, color=ft.Colors.with_opacity(0.3, ft.Colors.BLUE_500))
     )
 
     return ft.Column(
         [
             ft.Container(
                 content=ft.Text("BitPulse AI Advisor", size=24, weight="bold"),
-                padding=ft.Padding.only(left=10, top=10),
+                padding=ft.padding.only(left=10, top=10),
             ),
             ft.Divider(height=1, color="#333333"),
             chat_list,
