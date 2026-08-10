@@ -226,6 +226,10 @@ def market_view_component(page: ft.Page):
             width=1,
         )
 
+        chart_color = ft.Colors.GREEN_400 if change_pct >= 0 else ft.Colors.RED_400
+        chart_data_series.color = chart_color
+        chart_data_series.below_line_bgcolor = ft.Colors.with_opacity(0.1, chart_color)
+        
         if is_first_load:
             chart_data_series.data_points = points
             chart_container.content = persistent_chart

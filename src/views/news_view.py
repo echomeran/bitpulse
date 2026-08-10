@@ -49,8 +49,8 @@ def news_view_component(page: ft.Page, on_news_click):
         except Exception:
             pass
 
-    news_list = ft.Column(
-        expand=True, spacing=10, on_scroll=handle_scroll, scroll=ft.ScrollMode.AUTO
+    news_list = ft.ListView(
+        expand=True, spacing=10, on_scroll=handle_scroll
     )
     news_container = ft.Container(content=news_list, padding=10, expand=True)
     filter_row = ft.Row(scroll=ft.ScrollMode.AUTO, spacing=5)
