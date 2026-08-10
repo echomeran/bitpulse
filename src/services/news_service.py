@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
 import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from services.cache import load_json, save_json
 
@@ -20,6 +23,7 @@ NEWS_CACHE_MAX_AGE = 6 * 60 * 60  # 6 hours
 all_news_cache: list[dict] = []
 
 _session = requests.Session()
+_session.verify = False
 _session.headers.update({"User-Agent": "Mozilla/5.0 (BitPulse/1.0)"})
 
 

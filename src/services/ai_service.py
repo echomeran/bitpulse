@@ -6,10 +6,14 @@ import os
 from pathlib import Path
 
 import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger("bitpulse.ai")
 
 _session = requests.Session()
+_session.verify = False
 
 
 def get_api_url() -> str:

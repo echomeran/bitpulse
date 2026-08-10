@@ -3,6 +3,9 @@
 import logging
 
 import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from services.cache import load_json, save_json
 
@@ -15,6 +18,7 @@ MARKET_CACHE_MAX_AGE = 120  # 2 minutes
 live_price_ref: str = "$ --"
 
 _session = requests.Session()
+_session.verify = False
 _session.headers.update({"User-Agent": "Mozilla/5.0 (BitPulse/1.0)"})
 
 PERIOD_CONFIG = {
