@@ -16,6 +16,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from google import genai
+from google.genai import types
+from bs4 import BeautifulSoup
 
 
 load_dotenv(Path(__file__).with_name(".env"))
@@ -244,6 +246,36 @@ async def get_news():
         raise HTTPException(status_code=503, detail="No news available.")
 
     return {"articles": _news_cache.get("data", articles), "cached": False}
+
+def _scrape_article(url: str) -> str:
+    """Synchronously scrape the article text using BeautifulSoup."""
+    resp = _session.get(url, timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.content, "html.parser")
+    for tag in soup(["script", "style", "nav", "header", "footer", "aside"]):
+        tag.decompose()
+    paragraphs = soup.find_all("p")
+    blocks = []
+    for p in paragraphs:
+        text = p.get_text(strip=True)
+        if len(text) > 40 and "cookie" not in text.lower():
+            blocks.append(text)
+    return "\n\n".join(blocks)
+
+@app.get("/v1/news/article")
+async def get_news_article(url: str):
+    """Scrape the full text of a news article."""
+    if not url.startswith("http"):
+        raise HTTPException(status_code=400, detail="Invalid URL")
+    
+    try:
+        text = await asyncio.to_thread(_scrape_article, url)
+        if not text:
+            return {"text": "Full article text could not be extracted automatically.", "url": url}
+        return {"text": text, "url": url}
+    except Exception as e:
+        logger.warning(f"Failed to scrape {url}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load article")
 
 
 # ================= MARKET / PRICE PROXY =================

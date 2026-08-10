@@ -99,8 +99,21 @@ def _fetch_rss_feed(url: str, fallback_publisher: str) -> list[dict]:
             )
         return news_list
     except Exception as exc:
-        logger.warning("RSS fetch error (%s): %s", url, exc)
+        logger.warning("Failed to fetch news from backend: %s", exc)
         return []
+
+
+def fetch_full_article(api_url: str, article_url: str) -> str | None:
+    """Fetch the full article text from the backend."""
+    try:
+        resp = _session.get(f"{api_url}/v1/news/article", params={"url": article_url}, timeout=15, verify=False)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("text")
+        return None
+    except Exception as exc:
+        logger.warning("Failed to fetch full article text: %s", exc)
+        return None
 
 
 def fetch_news_from_api(api_url: str = "") -> list[dict]:

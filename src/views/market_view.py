@@ -159,7 +159,7 @@ def market_view_component(page: ft.Page):
         n = len(prices)
         if n > 1:
             points = [
-                ft.LineChartDataPoint((i / (n - 1)) * 100, p) for i, p in enumerate(prices)
+                ft.LineChartDataPoint((i / (n - 1)) * 100, p, tooltip=f"${p:,.2f}") for i, p in enumerate(prices)
             ]
         else:
             points = [ft.LineChartDataPoint(0, prices[0])] if prices else []
@@ -198,14 +198,26 @@ def market_view_component(page: ft.Page):
                 else:
                     return dt.strftime("%b '%y")
 
+            labels = []
+            num_labels = 5
+            for i in range(num_labels):
+                idx = i * (len(timestamps) - 1) // (num_labels - 1)
+                x_val = (idx / (len(timestamps) - 1)) * 100
+                ts = timestamps[idx]
+                labels.append(
+                    ft.ChartAxisLabel(
+                        value=x_val,
+                        label=ft.Text(fmt_ts(ts), size=10, color=ft.Colors.GREY_500)
+                    )
+                )
+
             persistent_chart.bottom_axis = ft.ChartAxis(
                 labels_size=20,
-                labels=[
-                    ft.ChartAxisLabel(value=0, label=ft.Text(fmt_ts(start_ts), size=10, color=ft.Colors.GREY_500)),
-                    ft.ChartAxisLabel(value=50, label=ft.Text(fmt_ts(mid_ts), size=10, color=ft.Colors.GREY_500)),
-                    ft.ChartAxisLabel(value=100, label=ft.Text(fmt_ts(end_ts), size=10, color=ft.Colors.GREY_500)),
-                ]
+                labels=labels
             )
+
+            # Ensure left axis takes no space
+            persistent_chart.left_axis = ft.ChartAxis(labels_size=0)
 
         # Add horizontal grid lines
         persistent_chart.horizontal_grid_lines = ft.ChartGridLines(
@@ -401,7 +413,7 @@ def market_view_component(page: ft.Page):
             ),
             # Chart and Price Card
             ft.Container(
-                padding=ft.padding.symmetric(horizontal=20),
+                padding=ft.padding.symmetric(horizontal=10),
                 expand=True,
                 content=ft.Column(
                     [

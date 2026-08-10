@@ -1,4 +1,8 @@
 import flet as ft
+import threading
+
+from services.ai_service import get_api_url
+from services.news_service import fetch_full_article
 
 
 def news_detail_view_component(item, on_back_click, page):
@@ -13,6 +17,33 @@ def news_detail_view_component(item, on_back_click, page):
     def open_original_article(e):
         if article_url.startswith(("https://", "http://")):
             page.launch_url(article_url)
+
+    content_text = ft.Text(
+        summary,
+        size=15,
+        selectable=True,
+        style=ft.TextStyle(height=1.65),
+        color=ft.Colors.with_opacity(0.9, ft.Colors.WHITE),
+    )
+
+    loading_indicator = ft.ProgressRing(width=16, height=16, color=ft.Colors.BLUE_400)
+    loading_text = ft.Text("Loading full article...", color=ft.Colors.GREY_500, size=13)
+    loading_row = ft.Row([loading_indicator, loading_text], visible=False)
+
+    def fetch_full():
+        api_url = get_api_url()
+        full_text = fetch_full_article(api_url, article_url)
+        if full_text:
+            content_text.value = full_text
+        
+        loading_row.visible = False
+        if content_text.page:
+            content_text.update()
+            loading_row.update()
+
+    if article_url.startswith(("https://", "http://")):
+        loading_row.visible = True
+        threading.Thread(target=fetch_full, daemon=True).start()
 
     back_bar = ft.Container(
         bgcolor="#121212",
@@ -67,13 +98,8 @@ def news_detail_view_component(item, on_back_click, page):
                             color=ft.Colors.GREY_500,
                         ),
                         ft.Divider(height=20, color="#222222"),
-                        ft.Text(
-                            summary,
-                            size=15,
-                            selectable=True,
-                            style=ft.TextStyle(height=1.65),
-                            color=ft.Colors.with_opacity(0.9, ft.Colors.WHITE),
-                        ),
+                        loading_row,
+                        content_text,
                         ft.Divider(height=30, color="#222222"),
                         ft.Text("Source: " + item.get("publisher", "CoinDesk"), color=ft.Colors.GREY_500, size=12),
                         ft.OutlinedButton(

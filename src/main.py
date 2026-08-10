@@ -109,34 +109,41 @@ def main(page: ft.Page):
     )
 
     def route_change(e=None):
-        page.views.clear()
-        page.views.append(
-            ft.View(
-                route="/",
-                bgcolor="#121212",
-                padding=0,
-                controls=[home_content],
-                navigation_bar=navigation_bar,
-            )
-        )
-
-        if page.route == "/news-detail" and selected_news_item["value"]:
+        if not page.views or page.views[0].route != "/":
+            page.views.clear()
             page.views.append(
                 ft.View(
-                    route="/news-detail",
+                    route="/",
                     bgcolor="#121212",
                     padding=0,
-                    controls=[
-                        ft.SafeArea(
-                            expand=True,
-                            minimum_padding=ft.padding.only(top=0),
-                            content=news_detail_view_component(
-                                selected_news_item["value"], go_back_to_list, page
-                            ),
-                        )
-                    ],
+                    controls=[home_content],
+                    navigation_bar=navigation_bar,
                 )
             )
+
+        if page.route == "/":
+            # If we returned to home, pop any extra views
+            while len(page.views) > 1:
+                page.views.pop()
+
+        elif page.route == "/news-detail" and selected_news_item["value"]:
+            if len(page.views) == 1 or page.views[-1].route != "/news-detail":
+                page.views.append(
+                    ft.View(
+                        route="/news-detail",
+                        bgcolor="#121212",
+                        padding=0,
+                        controls=[
+                            ft.SafeArea(
+                                expand=True,
+                                minimum_padding=ft.padding.only(top=0),
+                                content=news_detail_view_component(
+                                    selected_news_item["value"], go_back_to_list, page
+                                ),
+                            )
+                        ],
+                    )
+                )
         page.update()
 
     def handle_view_pop(e):
@@ -146,7 +153,8 @@ def main(page: ft.Page):
             # Clean up the selected item when leaving detail view
             if selected_news_item["value"] and page.views[-1].route == "/":
                 selected_news_item["value"] = None
-            page.go(page.views[-1].route)
+            page.route = page.views[-1].route
+            page.update()
         else:
             # Already at root — let the OS handle the back press (minimize app)
             pass
