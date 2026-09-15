@@ -1,6 +1,8 @@
 import flet as ft
 import threading
 
+import services.market_service as market_service
+from services.ai_service import get_api_url
 from views.ai_view import ai_view_component
 from views.market_view import market_view_component
 from views.news_detail_view import news_detail_view_component
@@ -162,7 +164,33 @@ def main(page: ft.Page):
     page.on_route_change = route_change
     page.on_view_pop = handle_view_pop
     route_change()
-    threading.Thread(target=update_news, daemon=True).start()
+
+    def prefetch_all():
+        """Fetch news, live price and 1-month market summary concurrently on startup."""
+        api_url = get_api_url()
+
+        def fetch_news():
+            update_news()
+
+        def fetch_market():
+            # 1D data for the live price display
+            data_1d = market_service.fetch_price_from_api(api_url, "1D")
+            if data_1d and data_1d.get("prices"):
+                market_service.live_price_ref = f"${data_1d['current_price']:,.2f}"
+                market_service.save_market_cache("1D", data_1d)
+
+            # 1M data for the LLM market context
+            data_1m = market_service.fetch_price_from_api(api_url, "1M")
+            if data_1m and data_1m.get("prices"):
+                market_service.market_summary_ref = market_service.build_market_summary(data_1m)
+                market_service.save_market_cache("1M", data_1m)
+
+        t_news = threading.Thread(target=fetch_news, daemon=True)
+        t_market = threading.Thread(target=fetch_market, daemon=True)
+        t_news.start()
+        t_market.start()
+
+    threading.Thread(target=prefetch_all, daemon=True).start()
 
 
 if __name__ == "__main__":

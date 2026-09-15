@@ -1,6 +1,7 @@
 """Market data service — BTC price history and Fear & Greed index."""
 
 import logging
+from datetime import datetime, timezone
 
 import requests
 import urllib3
@@ -16,6 +17,7 @@ MARKET_CACHE_MAX_AGE = 120  # 2 minutes
 
 # Module-level state shared with ai_view
 live_price_ref: str = "$ --"
+market_summary_ref: str = ""  # formatted 1-month summary for LLM context
 
 _session = requests.Session()
 _session.verify = False
@@ -156,3 +158,55 @@ def load_cached_market(period: str = "1D") -> dict | None:
 def save_market_cache(period: str, data: dict) -> None:
     """Persist market data to local JSON cache."""
     save_json(f"market_{period}.json", data)
+
+
+def build_market_summary(data: dict) -> str:
+    """Format market data into a compact, LLM-readable summary string.
+
+    Includes current price, period high/low, % change, Fear & Greed index,
+    and up to 5 weekly price snapshots so the model can reason about trend.
+    """
+    prices = data.get("prices", [])
+    timestamps = data.get("timestamps", [])
+    if not prices:
+        return ""
+
+    current = data.get("current_price") or prices[-1]
+    high = data.get("high") or max(prices)
+    low = data.get("low") or min(prices)
+    change_pct = data.get("change_pct", 0.0)
+    period = data.get("period", "1M")
+    fng = data.get("fng")
+
+    sign = "+" if change_pct >= 0 else ""
+    lines = [
+        f"BTC/USD market data — period: {period}",
+        f"Current price : ${current:,.2f}",
+        f"Period high   : ${high:,.2f}",
+        f"Period low    : ${low:,.2f}",
+        f"Period change : {sign}{change_pct:.2f}%",
+    ]
+
+    if fng:
+        try:
+            lines.append(
+                f"Fear & Greed  : {fng['value']} / 100 ({fng['value_classification']})"
+            )
+        except (KeyError, TypeError):
+            pass
+
+    # Weekly snapshots — evenly spaced across the available data
+    if timestamps and len(prices) >= 7:
+        lines.append("\nPrice snapshots (oldest → newest):")
+        n = len(prices)
+        indices = [round(i * (n - 1) / 4) for i in range(5)]
+        for idx in indices:
+            try:
+                ts_str = datetime.fromtimestamp(
+                    timestamps[idx], tz=timezone.utc
+                ).strftime("%d %b %Y")
+                lines.append(f"  {ts_str}: ${prices[idx]:,.2f}")
+            except Exception:
+                pass
+
+    return "\n".join(lines)

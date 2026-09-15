@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import time
 from pathlib import Path
 
 import requests
@@ -42,16 +43,19 @@ def send_chat_message(
     history: list[dict],
     btc_price: str = "$ --",
     news_items: list[dict] | None = None,
+    market_summary: str = "",
 ) -> tuple[str | None, str | None]:
     """Send a chat message to the backend and return (reply, error).
 
     Returns a tuple of (reply_text, None) on success or
     (None, error_message) on failure.
+    Retries once after a short delay to handle server cold-start 502s.
     """
     payload = {
         "message": message,
         "history": history[-6:],
         "btc_price": btc_price,
+        "market_summary": market_summary,
         "news": [
             {
                 "title": item.get("title", ""),
@@ -61,13 +65,29 @@ def send_chat_message(
         ],
     }
 
-    try:
-        response = _session.post(f"{api_url}/v1/chat", json=payload, timeout=30)
-    except requests.ConnectionError:
-        return None, "Could not reach the AI service. Check your connection and try again."
-    except requests.Timeout:
-        return None, "The AI service took too long to respond. Please try again."
-    except requests.RequestException:
+    response = None
+    for attempt in range(2):
+        try:
+            response = _session.post(f"{api_url}/v1/chat", json=payload, timeout=45)
+            # Retry on server-side errors (e.g. cold-start 502/503)
+            if response.status_code >= 500 and attempt == 0:
+                time.sleep(3)
+                continue
+            break
+        except requests.ConnectionError:
+            if attempt == 0:
+                time.sleep(2)
+                continue
+            return None, "Could not reach the AI service. Check your connection and try again."
+        except requests.Timeout:
+            if attempt == 0:
+                time.sleep(1)
+                continue
+            return None, "The AI service took too long to respond. Please try again."
+        except requests.RequestException:
+            return None, "Could not reach the AI service. Check your connection and try again."
+
+    if response is None:
         return None, "Could not reach the AI service. Check your connection and try again."
 
     if response.status_code == 429:

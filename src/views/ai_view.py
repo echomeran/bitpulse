@@ -97,6 +97,7 @@ def ai_view_component(page: ft.Page):
                 conversation_history,
                 market_service.live_price_ref,
                 payload_news,
+                market_service.market_summary_ref,
             )
             if typing_indicator in chat_list.controls:
                 chat_list.controls.remove(typing_indicator)
