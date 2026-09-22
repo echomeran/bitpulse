@@ -55,10 +55,23 @@ jobs:
         id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
-            echo "keystore=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
+            KS="$RUNNER_TEMP/release.jks"
+            printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$KS"
+            echo "Keystore: $(stat -c%s "$KS") bytes, sha256 $(sha256sum "$KS" | cut -d' ' -f1)"
+            if ! keytool -list -keystore "$KS" -storepass:env KEYSTORE_PASSWORD > /dev/null; then
+              echo "::error::The keystore cannot be opened with ANDROID_KEYSTORE_PASSWORD. Check that secret, and that ANDROID_KEYSTORE_BASE64 was pasted in full."
+              exit 1
+            fi
+            if ! keytool -certreq -alias "${KEY_ALIAS:-upload}" -keystore "$KS" -storepass:env KEYSTORE_PASSWORD -keypass:env KEY_PASSWORD > /dev/null; then
+              echo "::error::The key cannot be unlocked. Check ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD."
+              exit 1
+            fi
+            echo "keystore=$KS" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; the APK will be signed with a debug key."
           fi
