@@ -1,212 +1,94 @@
-"""Market data service — BTC price history and Fear & Greed index."""
+"""Market data: BTC price history, Fear & Greed index and block height."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
-import urllib3
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
+from services import sources
 from services.cache import load_json, save_json
+from services.net import session
 
 logger = logging.getLogger("bitpulse.market")
 
-MARKET_CACHE_FILE = "market_cache.json"
-MARKET_CACHE_MAX_AGE = 120  # 2 minutes
+# Only read when a live fetch fails, so it may be much older than the live refresh interval.
+OFFLINE_CACHE_MAX_AGE = 24 * 60 * 60
 
-# Module-level state shared with ai_view
+HALVING_INTERVAL = 210_000
+AVG_BLOCK_MINUTES = 10
+# Fallback anchor when block height is unavailable: block 840,000 was mined 2024-04-20 00:09 UTC.
+_ANCHOR_BLOCK = 840_000
+_ANCHOR_TIME = datetime(2024, 4, 20, 0, 9, tzinfo=timezone.utc)
+
 live_price_ref: str = "$ --"
-market_summary_ref: str = ""  # formatted 1-month summary for LLM context
-
-_session = requests.Session()
-_session.verify = False
-_session.headers.update({"User-Agent": "Mozilla/5.0 (BitPulse/1.0)"})
-
-PERIOD_CONFIG = {
-    "1H": {"interval": "2m", "range": "1d", "slice": -30},
-    "1D": {"interval": "15m", "range": "1d", "slice": None},
-    "1W": {"interval": "1h", "range": "1mo", "slice": -168},
-    "1M": {"interval": "1d", "range": "1mo", "slice": None},
-    "1Y": {"interval": "1d", "range": "1y", "slice": None},
-    "5Y": {"interval": "1wk", "range": "5y", "slice": None},
-}
+market_summary_ref: str = ""
 
 
 def fetch_price_from_api(api_url: str = "", period: str = "1D") -> dict | None:
-    """Fetch price data — prefer backend proxy, fall back to direct Yahoo/CoinGecko.
+    if period not in sources.PERIOD_CONFIG:
+        raise ValueError(f"Unknown period: {period}")
 
-    Returns a dict with keys: prices, timestamps, current_price, high, low,
-    change_pct, fng, period.  Returns None on total failure.
-    """
-    # Try backend proxy first
     if api_url:
         try:
-            resp = _session.get(f"{api_url}/v1/market", params={"period": period}, timeout=12)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get("prices"):
-                    return data
-        except Exception as exc:
+            resp = session.get(f"{api_url}/v1/market", params={"period": period}, timeout=12)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("prices"):
+                return data
+        except (requests.RequestException, ValueError, AttributeError) as exc:
             logger.warning("Backend market proxy failed, falling back: %s", exc)
 
-    # Direct Yahoo fallback
-    price_data = _fetch_yahoo_price(period)
-    if not price_data:
-        price_data = _fetch_coingecko_price(period)
-
-    fng = fetch_fng_data()
-
-    if not price_data:
-        return None
-
-    prices = price_data["prices"]
-    return {
-        "prices": prices,
-        "timestamps": price_data["timestamps"],
-        "current_price": prices[-1] if prices else None,
-        "high": max(prices) if prices else None,
-        "low": min(prices) if prices else None,
-        "change_pct": (
-            ((prices[-1] - prices[0]) / prices[0]) * 100
-            if len(prices) >= 2 and prices[0] != 0
-            else 0.0
-        ),
-        "fng": fng,
-        "period": period,
-    }
+    return sources.fetch_market(session, period)
 
 
-def _fetch_yahoo_price(period: str) -> dict | None:
-    """Fetch BTC price history from Yahoo Finance."""
-    cfg = PERIOD_CONFIG.get(period, PERIOD_CONFIG["1D"])
-    url = (
-        f"https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD"
-        f"?interval={cfg['interval']}&range={cfg['range']}"
-    )
-    try:
-        r = _session.get(url, timeout=10)
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        result = data.get("chart", {}).get("result", [])
-        if not result:
-            return None
-
-        timestamps = result[0].get("timestamp", [])
-        indicators = result[0].get("indicators", {}).get("quote", [{}])[0]
-        close_prices = indicators.get("close", [])
-
-        valid = [(t, p) for t, p in zip(timestamps, close_prices) if p is not None]
-        if cfg["slice"]:
-            valid = valid[cfg["slice"]:]
-
-        if not valid:
-            return None
-
-        return {
-            "timestamps": [v[0] for v in valid],
-            "prices": [v[1] for v in valid],
-        }
-    except Exception as exc:
-        logger.warning("Yahoo fetch error: %s", exc)
-        return None
-
-
-def _fetch_coingecko_price(period: str) -> dict | None:
-    """Fallback: fetch BTC price from CoinGecko public API."""
-    days_map = {"1H": "1", "1D": "1", "1W": "7", "1M": "30", "1Y": "365", "5Y": "1825"}
-    days = days_map.get(period, "1")
-    url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days={days}"
-    try:
-        r = _session.get(url, timeout=10)
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        raw_prices = data.get("prices", [])
-        if not raw_prices:
-            return None
-
-        timestamps = [int(p[0] / 1000) for p in raw_prices]
-        prices = [p[1] for p in raw_prices]
-
-        if period == "1H" and len(prices) > 30:
-            timestamps = timestamps[-30:]
-            prices = prices[-30:]
-
-        return {"timestamps": timestamps, "prices": prices}
-    except Exception as exc:
-        logger.warning("CoinGecko fetch error: %s", exc)
-        return None
-
-
-def fetch_fng_data() -> dict | None:
-    """Fetch the Fear & Greed index from alternative.me."""
-    try:
-        r = _session.get("https://api.alternative.me/fng/", timeout=5)
-        return r.json()["data"][0] if r.status_code == 200 else None
-    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
-        return None
-
-
-def load_cached_market(period: str = "1D") -> dict | None:
-    """Load market data from local JSON cache."""
-    data, _ = load_json(f"market_{period}.json", MARKET_CACHE_MAX_AGE)
+def load_cached_market(period: str) -> dict | None:
+    data, _ = load_json(f"market_{period}.json", OFFLINE_CACHE_MAX_AGE)
     return data
 
 
 def save_market_cache(period: str, data: dict) -> None:
-    """Persist market data to local JSON cache."""
     save_json(f"market_{period}.json", data)
 
 
-def build_market_summary(data: dict) -> str:
-    """Format market data into a compact, LLM-readable summary string.
+def estimate_days_to_halving(block_height: int | None, now: datetime | None = None) -> int:
+    now = now or datetime.now(timezone.utc)
+    if block_height is None:
+        elapsed_blocks = (now - _ANCHOR_TIME).total_seconds() / 60 / AVG_BLOCK_MINUTES
+        block_height = _ANCHOR_BLOCK + int(elapsed_blocks)
+    next_halving = (block_height // HALVING_INTERVAL + 1) * HALVING_INTERVAL
+    remaining = timedelta(minutes=(next_halving - block_height) * AVG_BLOCK_MINUTES)
+    return remaining.days
 
-    Includes current price, period high/low, % change, Fear & Greed index,
-    and up to 5 weekly price snapshots so the model can reason about trend.
-    """
-    prices = data.get("prices", [])
-    timestamps = data.get("timestamps", [])
+
+def build_market_summary(data: dict) -> str:
+    """Compact, LLM-readable summary: price stats, sentiment and 5 evenly spaced snapshots."""
+    prices = data.get("prices") or []
+    timestamps = data.get("timestamps") or []
     if not prices:
         return ""
 
     current = data.get("current_price") or prices[-1]
     high = data.get("high") or max(prices)
     low = data.get("low") or min(prices)
-    change_pct = data.get("change_pct", 0.0)
-    period = data.get("period", "1M")
-    fng = data.get("fng")
-
+    change_pct = data.get("change_pct") or 0.0
     sign = "+" if change_pct >= 0 else ""
     lines = [
-        f"BTC/USD market data — period: {period}",
+        f"BTC/USD market data — period: {data.get('period', '1M')}",
         f"Current price : ${current:,.2f}",
         f"Period high   : ${high:,.2f}",
         f"Period low    : ${low:,.2f}",
         f"Period change : {sign}{change_pct:.2f}%",
     ]
 
-    if fng:
-        try:
-            lines.append(
-                f"Fear & Greed  : {fng['value']} / 100 ({fng['value_classification']})"
-            )
-        except (KeyError, TypeError):
-            pass
+    fng = data.get("fng")
+    if isinstance(fng, dict) and "value" in fng and "value_classification" in fng:
+        lines.append(f"Fear & Greed  : {fng['value']} / 100 ({fng['value_classification']})")
 
-    # Weekly snapshots — evenly spaced across the available data
-    if timestamps and len(prices) >= 7:
+    if len(timestamps) == len(prices) and len(prices) >= 7:
         lines.append("\nPrice snapshots (oldest → newest):")
         n = len(prices)
-        indices = [round(i * (n - 1) / 4) for i in range(5)]
-        for idx in indices:
-            try:
-                ts_str = datetime.fromtimestamp(
-                    timestamps[idx], tz=timezone.utc
-                ).strftime("%d %b %Y")
-                lines.append(f"  {ts_str}: ${prices[idx]:,.2f}")
-            except Exception:
-                pass
+        for idx in (round(i * (n - 1) / 4) for i in range(5)):
+            day = datetime.fromtimestamp(timestamps[idx], tz=timezone.utc).strftime("%d %b %Y")
+            lines.append(f"  {day}: ${prices[idx]:,.2f}")
 
     return "\n".join(lines)

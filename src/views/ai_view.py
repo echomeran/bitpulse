@@ -1,8 +1,14 @@
+import asyncio
+import logging
+
 import flet as ft
 
-from services.ai_service import get_api_url
-import services.news_service as news_service
 import services.market_service as market_service
+import services.news_service as news_service
+from services.ai_service import ERR_UNREACHABLE, get_api_url, send_chat_message
+
+logger = logging.getLogger("bitpulse.ai_view")
+MAX_STORED_TURNS = 8
 
 
 def create_chat_bubble(text, is_user):
@@ -35,15 +41,18 @@ def create_chat_bubble(text, is_user):
 
 
 def ai_view_component(page: ft.Page):
-    import asyncio
-    from services.ai_service import send_chat_message
-
     chat_list = ft.ListView(expand=True, spacing=15, auto_scroll=True, padding=10)
     conversation_history: list[dict] = []
+    sending = {"value": False}
+
+    def set_busy(busy: bool):
+        sending["value"] = busy
+        chat_input.disabled = busy
+        send_button.content.disabled = busy
 
     async def send_message_click(e):
-        user_text = chat_input.value.strip()
-        if not user_text:
+        user_text = (chat_input.value or "").strip()
+        if not user_text or sending["value"]:
             return
 
         api_url = get_api_url()
@@ -57,6 +66,7 @@ def ai_view_component(page: ft.Page):
             page.update()
             return
 
+        set_busy(True)
         chat_list.controls.append(create_chat_bubble(user_text, is_user=True))
         chat_input.value = ""
         page.update()
@@ -112,20 +122,17 @@ def ai_view_component(page: ft.Page):
                         {"role": "assistant", "text": reply},
                     ]
                 )
-                del conversation_history[:-8]
+                del conversation_history[:-MAX_STORED_TURNS]
                 chat_list.controls.append(
                     create_chat_bubble(reply, is_user=False)
                 )
         except Exception:
+            logger.exception("Chat request failed")
             if typing_indicator in chat_list.controls:
                 chat_list.controls.remove(typing_indicator)
-            chat_list.controls.append(
-                create_chat_bubble(
-                    "Could not reach the AI service. Check your connection and try again.",
-                    is_user=False,
-                )
-            )
+            chat_list.controls.append(create_chat_bubble(ERR_UNREACHABLE, is_user=False))
         finally:
+            set_busy(False)
             page.update()
 
     chat_input = ft.TextField(

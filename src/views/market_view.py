@@ -1,18 +1,18 @@
-import flet as ft
+import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 
-from services.ai_service import get_api_url
-from services.market_service import (
-    fetch_price_from_api,
-    load_cached_market,
-    save_market_cache,
-)
+import flet as ft
+
 import services.market_service as market_service
+from services.ai_service import get_api_url
+
+logger = logging.getLogger("bitpulse.market_view")
 
 
 def market_view_component(page: ft.Page):
-    loading = False
+    state_lock = threading.Lock()
+    state = {"loading": False, "pending": None}
     view_container = ft.Column(expand=True)
 
     fng_value = ft.Text(
@@ -52,11 +52,7 @@ def market_view_component(page: ft.Page):
         content=ft.OutlinedButton(
             "Retry",
             icon=ft.Icons.REFRESH_ROUNDED,
-            on_click=lambda _: threading.Thread(
-                target=update_data,
-                args=(selected_period["value"],),
-                daemon=True,
-            ).start(),
+            on_click=lambda _: request_period(selected_period["value"]),
         ),
         alignment=ft.alignment.center,
         visible=False,
@@ -104,9 +100,7 @@ def market_view_component(page: ft.Page):
             border_radius=20,
             bgcolor="transparent",
             animate=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
-            on_click=lambda _, p=label: threading.Thread(
-                target=update_data, args=(p,), daemon=True
-            ).start(),
+            on_click=lambda _, p=label: request_period(p),
             ink=True,
         )
         period_buttons[label] = btn
@@ -185,12 +179,9 @@ def market_view_component(page: ft.Page):
         # Bottom Axis (Time labels)
         timestamps = data.get("timestamps", [])
         if timestamps and len(timestamps) >= 2:
-            start_ts = timestamps[0]
-            mid_ts = timestamps[len(timestamps) // 2]
-            end_ts = timestamps[-1]
 
             def fmt_ts(ts):
-                dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+                dt = datetime.fromtimestamp(ts)
                 if selected_period["value"] in ["1H", "1D"]:
                     return dt.strftime("%H:%M")
                 elif selected_period["value"] in ["1W", "1M"]:
@@ -229,7 +220,7 @@ def market_view_component(page: ft.Page):
         chart_color = ft.Colors.GREEN_400 if change_pct >= 0 else ft.Colors.RED_400
         chart_data_series.color = chart_color
         chart_data_series.below_line_bgcolor = ft.Colors.with_opacity(0.1, chart_color)
-        
+
         if is_first_load:
             chart_data_series.data_points = points
             chart_container.content = persistent_chart
@@ -266,13 +257,30 @@ def market_view_component(page: ft.Page):
         else:
             fng_label.value = "Unavailable"
 
+        halving_value.value = format_halving(data.get("block_height"))
         retry_container.visible = False
 
+    def request_period(period):
+        with state_lock:
+            if state["loading"]:
+                state["pending"] = period
+                return
+            state["loading"] = True
+        threading.Thread(target=_load_loop, args=(period,), daemon=True).start()
+
+    def _load_loop(period):
+        while True:
+            try:
+                update_data(period)
+            except Exception:
+                logger.exception("Market update failed")
+            with state_lock:
+                period, state["pending"] = state["pending"], None
+                if period is None:
+                    state["loading"] = False
+                    return
+
     def update_data(period):
-        nonlocal loading
-        if loading:
-            return
-        loading = True
         selected_period["value"] = period
 
         is_first_load = chart_container.content != persistent_chart
@@ -293,48 +301,40 @@ def market_view_component(page: ft.Page):
 
         set_active_period(period)
 
-        api_url = get_api_url()
-        data = fetch_price_from_api(api_url, period)
+        data = market_service.fetch_price_from_api(get_api_url(), period)
 
         if data and data.get("prices"):
             try:
                 _apply_market_data(data, is_first_load)
-                save_market_cache(period, data)
-            except Exception as ex:
-                print(f"Chart render error: {ex}")
-                current_time_label.value = f"Error: {ex}"
+                market_service.save_market_cache(period, data)
+            except Exception:
+                logger.exception("Chart render failed")
+                current_time_label.value = "Could not display chart data"
                 current_time_label.color = ft.Colors.RED_ACCENT
         else:
-            # Try local cache
-            cached = load_cached_market(period)
+            cached = market_service.load_cached_market(period)
             if cached and cached.get("prices"):
                 try:
                     _apply_market_data(cached, is_first_load)
                     current_time_label.value = "Showing cached data · connection lost"
                     current_time_label.color = ft.Colors.ORANGE_ACCENT
                 except Exception:
-                    pass
+                    logger.exception("Cached chart render failed")
             else:
                 current_time_label.value = "Connection lost · tap Retry"
                 current_time_label.color = ft.Colors.RED_ACCENT
                 retry_container.visible = True
 
-        loading = False
         page.update()
 
     def update_market_ui():
-        update_data("1D")
+        request_period(selected_period["value"])
 
-    # Halving card — estimated from a reference block
-    # Bitcoin block 840,000 mined ~April 2024; next halving at block 1,050,000
-    # Average block time ≈ 10 minutes
-    LAST_HALVING_BLOCK = 840_000
-    NEXT_HALVING_BLOCK = 1_050_000
-    BLOCKS_REMAINING_APPROX = NEXT_HALVING_BLOCK - LAST_HALVING_BLOCK
-    # Rough estimate: 210,000 blocks × 10 min ≈ 1,458 days from April 2024
-    estimated_halving = datetime(2028, 4, 17, tzinfo=timezone.utc)
-    remaining_days = max(0, (estimated_halving - datetime.now(timezone.utc)).days)
-    halving_text = f"~{remaining_days} Days" if remaining_days > 0 else "Imminent"
+    def format_halving(block_height):
+        days = market_service.estimate_days_to_halving(block_height)
+        return f"~{days} Days" if days > 0 else "Imminent"
+
+    halving_value = ft.Text(format_halving(None), size=16, weight="bold", color=ft.Colors.WHITE)
 
     fng_card = ft.Container(
         expand=True,
@@ -388,12 +388,7 @@ def market_view_component(page: ft.Page):
                             color=ft.Colors.GREY_500,
                             weight="bold",
                         ),
-                        ft.Text(
-                            halving_text,
-                            size=16,
-                            weight="bold",
-                            color=ft.Colors.WHITE,
-                        ),
+                        halving_value,
                         ft.Text(
                             "Estimated",
                             size=9,

@@ -1,21 +1,20 @@
-import flet as ft
 import threading
 
+import flet as ft
+
+import services.news_service as news_service
+from services import sources
 from services.ai_service import get_api_url
-from services.news_service import fetch_full_article
 
 
 def news_detail_view_component(item, on_back_click, page):
-    try:
-        img_url = item["thumbnail"]["resolutions"][0]["url"]
-    except (KeyError, IndexError, TypeError):
-        img_url = "icon_clean.png"
-
+    img_url = news_service.get_image_url(item)
     summary = item.get("description") or "No article summary is available."
     article_url = item.get("link", "")
+    can_open = article_url.startswith(("https://", "http://"))
 
     def open_original_article(e):
-        if article_url.startswith(("https://", "http://")):
+        if can_open:
             page.launch_url(article_url)
 
     content_text = ft.Text(
@@ -30,20 +29,19 @@ def news_detail_view_component(item, on_back_click, page):
     loading_text = ft.Text("Loading full article...", color=ft.Colors.GREY_500, size=13)
     loading_row = ft.Row([loading_indicator, loading_text], visible=False)
 
-    def fetch_full():
-        api_url = get_api_url()
-        full_text = fetch_full_article(api_url, article_url)
-        if full_text:
+    def fetch_full(api_url):
+        full_text = news_service.fetch_full_article(api_url, article_url)
+        if full_text and len(full_text) > len(summary):
             content_text.value = full_text
-        
         loading_row.visible = False
         if content_text.page:
             content_text.update()
             loading_row.update()
 
-    if article_url.startswith(("https://", "http://")):
+    api_url = get_api_url()
+    if api_url and sources.is_allowed_article_url(article_url):
         loading_row.visible = True
-        threading.Thread(target=fetch_full, daemon=True).start()
+        threading.Thread(target=fetch_full, args=(api_url,), daemon=True).start()
 
     back_bar = ft.Container(
         bgcolor="#121212",
@@ -93,7 +91,7 @@ def news_detail_view_component(item, on_back_click, page):
                     [
                         ft.Text(item.get("title", "Crypto News"), size=20, weight="bold"),
                         ft.Text(
-                            item.get("published_at", "Latest update"),
+                            news_service.published_label(item),
                             size=12,
                             color=ft.Colors.GREY_500,
                         ),
@@ -106,7 +104,7 @@ def news_detail_view_component(item, on_back_click, page):
                             "Open original article",
                             icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
                             on_click=open_original_article,
-                            disabled=not article_url.startswith(("https://", "http://")),
+                            disabled=not can_open,
                         ),
                         ft.Container(height=30),
                     ]

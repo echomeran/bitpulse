@@ -1,28 +1,57 @@
+import threading
+
 import flet as ft
 
-from services.ai_service import get_api_url
-from services.news_service import (
-    all_news_cache as _news_cache_ref,
-    fetch_news_from_api,
-    get_image_url,
-    load_cached_news,
-    save_news_cache,
-)
 import services.news_service as news_service
+from services.ai_service import get_api_url
+
+ALL_NEWS = "All News"
+
+# label -> (category names, category substrings, title substrings)
+FILTERS = {
+    "Markets": (
+        {"markets", "crypto markets today", "prices", "coindesk 20", "coindesk indices"},
+        (),
+        ("market", "price"),
+    ),
+    "Bitcoin": (set(), ("bitcoin",), ("bitcoin", " btc ")),
+    "Trading": ({"crypto trading", "options", "deribit"}, (), ("trading", "trade", "futures")),
+    "Policy": (
+        {"policy", "regulation", "tax", "federal reserve"},
+        (),
+        ("regulation", "policy", "sec ", "fed ", "bill"),
+    ),
+    "DeFi": ({"defi", "stablecoins", "tokenization"}, (), ("defi", "stablecoin", "token")),
+    "ETFs": (set(), ("etf",), ("etf", "spot bitcoin")),
+}
+
+
+def matches_filter(item: dict, label: str) -> bool:
+    if label == ALL_NEWS:
+        return True
+    exact, partial, title_words = FILTERS[label]
+    cats = [c.lower() for c in item.get("categories", [])]
+    title = f" {item.get('title', '').lower()} "
+    return (
+        any(c in exact for c in cats)
+        or any(p in c for c in cats for p in partial)
+        or any(w in title for w in title_words)
+    )
 
 
 def news_view_component(page: ft.Page, on_news_click):
     view_container = ft.Column(expand=True)
+    selected_filter = {"value": ALL_NEWS}
+    refresh_lock = threading.Lock()
 
-    # Load cache at startup
-    cached = load_cached_news()
+    cached = news_service.load_cached_news()
     if cached:
         news_service.all_news_cache = cached
 
     def scroll_to_top(e):
         news_list.scroll_to(offset=0, duration=500)
 
-    twitter_logo = ft.Container(
+    scroll_top_button = ft.Container(
         content=ft.Icon(ft.Icons.ARROW_UPWARD_ROUNDED, color=ft.Colors.WHITE, size=24),
         bgcolor=ft.Colors.BLUE_500,
         padding=8,
@@ -35,19 +64,14 @@ def news_view_component(page: ft.Page, on_news_click):
         on_click=scroll_to_top,
         visible=False,
     )
-    logo_wrapper = ft.Row([twitter_logo], alignment=ft.MainAxisAlignment.CENTER)
-    logo_stack_item = ft.Container(content=logo_wrapper, top=15, left=0, right=0)
+    scroll_top_row = ft.Row([scroll_top_button], alignment=ft.MainAxisAlignment.CENTER)
+    scroll_top_overlay = ft.Container(content=scroll_top_row, top=15, left=0, right=0)
 
     def handle_scroll(e: ft.OnScrollEvent):
-        try:
-            if float(e.pixels) > 300 and not twitter_logo.visible:
-                twitter_logo.visible = True
-                twitter_logo.update()
-            elif float(e.pixels) < 300 and twitter_logo.visible:
-                twitter_logo.visible = False
-                twitter_logo.update()
-        except Exception:
-            pass
+        show = float(e.pixels or 0) > 300
+        if show != scroll_top_button.visible:
+            scroll_top_button.visible = show
+            scroll_top_button.update()
 
     news_list = ft.ListView(
         expand=True, spacing=10, on_scroll=handle_scroll
@@ -60,7 +84,7 @@ def news_view_component(page: ft.Page, on_news_click):
         content=ft.OutlinedButton(
             "Retry",
             icon=ft.Icons.REFRESH_ROUNDED,
-            on_click=lambda _: update_news(),
+            on_click=lambda _: refresh_in_background(),
         ),
         alignment=ft.alignment.center,
         visible=False,
@@ -68,7 +92,6 @@ def news_view_component(page: ft.Page, on_news_click):
 
     def render_news(data):
         news_list.controls.clear()
-        retry_button.visible = False
 
         if not data:
             news_list.controls.append(
@@ -96,7 +119,7 @@ def news_view_component(page: ft.Page, on_news_click):
             return
 
         for item in data:
-            img_url = get_image_url(item)
+            img_url = news_service.get_image_url(item)
             card = ft.Card(
                 color=ft.Colors.TRANSPARENT,
                 elevation=0,
@@ -145,7 +168,7 @@ def news_view_component(page: ft.Page, on_news_click):
                                         max_lines=2,
                                     ),
                                     ft.Text(
-                                        f"{item.get('publisher', 'CoinDesk')} · {item.get('published_at', 'Latest')}",
+                                        f"{item.get('publisher', 'CoinDesk')} · {news_service.published_label(item)}",
                                         size=11,
                                         color=ft.Colors.GREY_500,
                                     ),
@@ -188,127 +211,63 @@ def news_view_component(page: ft.Page, on_news_click):
 
         # Render all cards invisible, then animate them in
         page.update()
-        for ctrl in news_list.controls[:-1]:  # skip footer
-            try:
-                ctrl.content.opacity = 1
-                ctrl.content.offset = ft.Offset(0, 0)
-            except Exception:
-                pass
+        for ctrl in news_list.controls[:-1]:
+            ctrl.content.opacity = 1
+            ctrl.content.offset = ft.Offset(0, 0)
         page.update()
 
+    def render_current():
+        label = selected_filter["value"]
+        render_news([item for item in news_service.all_news_cache if matches_filter(item, label)])
+
     def handle_filter(e):
-        selected_label = e.control.label.value
+        selected_filter["value"] = e.control.label.value
         for chip in filter_row.controls:
-            chip.selected = chip.label.value == selected_label
-
-        if selected_label == "All News":
-            render_news(news_service.all_news_cache)
-            return
-
-        filtered = []
-        for item in news_service.all_news_cache:
-            item_cats = [c.lower() for c in item.get("categories", [])]
-            title = item.get("title", "").lower()
-
-            match = False
-            if selected_label == "Markets":
-                match = any(
-                    c
-                    in [
-                        "markets",
-                        "crypto markets today",
-                        "prices",
-                        "coindesk 20",
-                        "coindesk indices",
-                    ]
-                    for c in item_cats
-                ) or "market" in title or "price" in title
-            elif selected_label == "Bitcoin":
-                match = (
-                    any("bitcoin" in c for c in item_cats)
-                    or "bitcoin" in title
-                    or " btc " in title
-                )
-            elif selected_label == "Trading":
-                match = any(
-                    c in ["crypto trading", "options", "deribit"] for c in item_cats
-                ) or "trading" in title or "trade" in title or "futures" in title
-            elif selected_label == "Policy":
-                match = any(
-                    c in ["policy", "regulation", "tax", "federal reserve"]
-                    for c in item_cats
-                ) or "regulation" in title or "policy" in title or "sec " in title or "fed " in title or "bill" in title
-            elif selected_label == "DeFi":
-                match = any(
-                    c in ["defi", "stablecoins", "tokenization"] for c in item_cats
-                ) or "defi" in title or "stablecoin" in title or "token" in title
-            elif selected_label == "ETFs":
-                match = (
-                    any("etf" in c for c in item_cats)
-                    or "etf" in title
-                    or "spot bitcoin" in title
-                )
-
-            if match:
-                filtered.append(item)
-
-        render_news(filtered)
+            chip.selected = chip.label.value == selected_filter["value"]
+        render_current()
 
     filter_row.controls = [
-        ft.Chip(label=ft.Text("All News"), selected=True, on_select=handle_filter),
-        ft.Chip(label=ft.Text("Markets"), on_select=handle_filter),
-        ft.Chip(label=ft.Text("Bitcoin"), on_select=handle_filter),
-        ft.Chip(label=ft.Text("Trading"), on_select=handle_filter),
-        ft.Chip(label=ft.Text("Policy"), on_select=handle_filter),
-        ft.Chip(label=ft.Text("DeFi"), on_select=handle_filter),
-        ft.Chip(label=ft.Text("ETFs"), on_select=handle_filter),
+        ft.Chip(label=ft.Text(label), selected=label == ALL_NEWS, on_select=handle_filter)
+        for label in (ALL_NEWS, *FILTERS)
     ]
 
-    def back_to_list():
-        view_container.controls.clear()
-        view_container.controls.append(filter_row)
-        view_container.controls.append(
-            ft.Container(
-                content=ft.Row([status_text, ft.Container(expand=True), retry_button]),
-                padding=ft.padding.only(left=12, top=6, bottom=2, right=12),
-            )
-        )
-        view_container.controls.append(
-            ft.Stack([news_container, logo_stack_item], expand=True)
-        )
-        if view_container.page:
-            page.update()
-
     def update_news():
-        status_text.value = "Refreshing news…"
-        retry_button.visible = False
-        if status_text.page:
-            status_text.update()
+        if not refresh_lock.acquire(blocking=False):
+            return
+        try:
+            status_text.value = "Refreshing news…"
+            retry_button.visible = False
+            if status_text.page:
+                page.update()
 
-        api_url = get_api_url()
-        fresh_news = fetch_news_from_api(api_url)
-        if fresh_news:
-            news_service.all_news_cache = fresh_news
-            save_news_cache(news_service.all_news_cache)
-            status_text.value = f"Updated just now · {len(news_service.all_news_cache)} articles"
-            render_news(news_service.all_news_cache)
-        elif news_service.all_news_cache:
-            status_text.value = "Could not refresh · showing saved news"
-        else:
-            cached = load_cached_news()
-            news_service.all_news_cache = cached
-            if cached:
-                status_text.value = "Showing cached news · tap refresh to retry"
-                render_news(news_service.all_news_cache)
+            fresh_news = news_service.fetch_news_from_api(get_api_url())
+            if fresh_news:
+                news_service.all_news_cache = fresh_news
+                news_service.save_news_cache(fresh_news)
+                status_text.value = f"Updated just now · {len(fresh_news)} articles"
+            elif news_service.all_news_cache:
+                status_text.value = "Could not refresh · showing saved news"
             else:
                 status_text.value = "No connection · tap Retry"
                 retry_button.visible = True
-                render_news([])
-        back_to_list()
+            render_current()
+        finally:
+            refresh_lock.release()
+
+    def refresh_in_background():
+        threading.Thread(target=update_news, daemon=True).start()
+
+    view_container.controls = [
+        filter_row,
+        ft.Container(
+            content=ft.Row([status_text, ft.Container(expand=True), retry_button]),
+            padding=ft.padding.only(left=12, top=6, bottom=2, right=12),
+        ),
+        ft.Stack([news_container, scroll_top_overlay], expand=True),
+    ]
 
     if news_service.all_news_cache:
         status_text.value = "Showing saved news · refreshing…"
-        render_news(news_service.all_news_cache)
-    back_to_list()
+        render_current()
 
     return view_container, update_news

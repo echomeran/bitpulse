@@ -5,8 +5,6 @@ on:
   push:
     tags:
       - 'v*'
-  release:
-    types: [published]
 
 permissions:
   contents: write
@@ -19,6 +17,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0-dev"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -40,10 +49,31 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flet==0.28.3 requests==2.32.5
+          pip install -r src/requirements.txt
+
+      - name: Decode signing key
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+            echo "keystore=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; the APK will be signed with a debug key."
+          fi
 
       - name: Build Android APK
+        env:
+          KEYSTORE: ${{ steps.signing.outputs.keystore }}
+          FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          FLET_ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
+          SIGNING_ARGS=()
+          if [ -n "$KEYSTORE" ]; then
+            SIGNING_ARGS=(--android-signing-key-store "$KEYSTORE" --android-signing-key-alias "${KEY_ALIAS:-upload}")
+          fi
           flet build apk src \
             --output build/apk \
             --project bitpulse \
@@ -51,28 +81,29 @@ jobs:
             --org com.bitpulse \
             --bundle-id com.bitpulse.app \
             --description "Bitcoin news, market data and AI education." \
-            --build-version 1.0.0 \
-            --build-number 1 \
+            --build-version "${{ steps.version.outputs.version }}" \
+            --build-number "${{ steps.version.outputs.build_number }}" \
             --arch arm64-v8a \
-            --android-permissions android.permission.INTERNET=True android.permission.ACCESS_NETWORK_STATE=True
+            --android-permissions android.permission.INTERNET=True android.permission.ACCESS_NETWORK_STATE=True \
+            "${SIGNING_ARGS[@]}"
 
-      - name: Rename APK for release
+      - name: Collect APK
         run: |
           mkdir -p dist
-          find build/apk -name "*.apk" -exec cp {} dist/BitPulse-v1.0.0.apk \;
+          APK=$(find build/apk -name "*.apk" | head -n 1)
+          test -n "$APK"
+          cp "$APK" "dist/BitPulse-v${{ steps.version.outputs.version }}.apk"
           ls -la dist/
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BitPulse-v1.0.0-apk
-          path: dist/BitPulse-v1.0.0.apk
+          name: BitPulse-v${{ steps.version.outputs.version }}-apk
+          path: dist/*.apk
           if-no-files-found: error
 
       - name: Upload to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/BitPulse-v1.0.0.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: dist/*.apk
