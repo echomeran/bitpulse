@@ -1,0 +1,27 @@
+name: Keep backend awake
+
+# Render's free tier sleeps after ~15 minutes idle and then needs ~30s to answer.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: |
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /dev/null -m 120 -w '%{http_code}' https://bitpulse-lel3.onrender.com/health || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "Backend is awake (attempt $attempt)."
+              exit 0
+            fi
+            echo "Attempt $attempt returned HTTP $code"
+            sleep 20
+          done
+          echo "::error::Backend did not return 200 after 3 attempts."
+          exit 1
