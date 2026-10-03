@@ -17,7 +17,7 @@ if (-not $match) { throw "GEMINI_API_KEY missing from server\.env" }
 $key = $match.Matches[0].Groups[1].Value.Trim()
 
 # Keep the key out of the console and out of shell history: it is passed as one argument.
-$envVars = "GEMINI_API_KEY=$key,GEMINI_MODEL=gemini-2.5-flash,TRUSTED_PROXY_HOPS=1"
+$envVars = "GEMINI_API_KEY=$key,TRUSTED_PROXY_HOPS=1"
 
 & $gcloud run deploy $Service `
     --project $Project `
