@@ -45,6 +45,12 @@ def test_published_label_prefers_timestamp():
     assert news_service.published_label({}) == "Latest"
 
 
+def test_byline_names_the_outlet_then_the_journalist():
+    assert news_service.byline({"publisher": "CoinDesk", "author": "Jane"}) == "CoinDesk · Jane"
+    assert news_service.byline({"publisher": "CoinDesk"}) == "CoinDesk"
+    assert news_service.byline({"publisher": "CoinDesk", "author": "CoinDesk"}) == "CoinDesk"
+
+
 def test_get_image_url_falls_back():
     assert news_service.get_image_url({}) == news_service.DEFAULT_IMAGE
     assert news_service.get_image_url({"thumbnail": {"resolutions": [{"url": ""}]}}) == news_service.DEFAULT_IMAGE

@@ -38,12 +38,14 @@ def test_parse_rss_extracts_fields():
     items = sources.parse_rss(RSS, "CoinDesk")
     first = items[0]
     assert first["title"] == "Bitcoin ETF inflows"
-    assert first["publisher"] == "Jane"
+    assert first["publisher"] == "CoinDesk"
+    assert first["author"] == "Jane"
     assert first["description"] == "Full & rich body"
     assert first["thumbnail"] == {"resolutions": [{"url": "https://img/x.jpg"}]}
     assert first["categories"] == ["ETFs"]
     assert first["published_ts"] == 1789984800.0
     assert items[1]["publisher"] == "CoinDesk"
+    assert items[1]["author"] == ""
     assert items[1]["description"] == "plain"
 
 

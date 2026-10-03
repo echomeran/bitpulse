@@ -143,7 +143,7 @@ def news_detail_view_component(item, on_back_click, page):
                     tooltip="Back to news",
                 ),
                 ft.Text(
-                    item.get("publisher", "CoinDesk"),
+                    item.get("publisher") or "CoinDesk",
                     size=13,
                     color=ft.Colors.GREY_400,
                 ),
@@ -190,7 +190,7 @@ def news_detail_view_component(item, on_back_click, page):
                         loading_row,
                         content_text,
                         ft.Divider(height=30, color="#222222"),
-                        ft.Text("Source: " + item.get("publisher", "CoinDesk"), color=ft.Colors.GREY_500, size=12),
+                        ft.Text("Source: " + news_service.byline(item), color=ft.Colors.GREY_500, size=12),
                         ft.OutlinedButton(
                             "Open original article",
                             icon=ft.Icons.OPEN_IN_NEW_ROUNDED,

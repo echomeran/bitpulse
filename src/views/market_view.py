@@ -1,4 +1,5 @@
 import logging
+import math
 import threading
 from datetime import datetime
 
@@ -158,25 +159,33 @@ def market_view_component(page: ft.Page):
         else:
             points = [ft.LineChartDataPoint(0, prices[0])] if prices else []
 
-        # Configure chart limits and padding
+        # A label is only drawn where it lands exactly on a tick, so both axes place their labels
+        # on the tick grid and set the matching interval. Whole dollars keep tick arithmetic exact;
+        # with fractional steps the computed ticks miss the label values and nothing is drawn.
         padding = (high - low) * 0.05 if high > low else (high * 0.05 if high else 1)
-        persistent_chart.min_y = low - padding
-        persistent_chart.max_y = high + padding
+        y_step = max(1, round((high - low + 2 * padding) / 4))
+        min_y = math.floor((low - padding) / y_step) * y_step
+        max_y = min_y + 4 * y_step
+        persistent_chart.min_y = min_y
+        persistent_chart.max_y = max_y
         persistent_chart.min_x = 0
         persistent_chart.max_x = 100
-
-        # Right Axis (Price labels)
-        mid_p = (high + low) / 2
         persistent_chart.right_axis = ft.ChartAxis(
-            labels_size=40,
+            labels_size=44,
+            labels_interval=y_step,
             labels=[
-                ft.ChartAxisLabel(value=low, label=ft.Text(f"{low/1000:.1f}k", size=10, color=ft.Colors.GREY_500)),
-                ft.ChartAxisLabel(value=mid_p, label=ft.Text(f"{mid_p/1000:.1f}k", size=10, color=ft.Colors.GREY_500)),
-                ft.ChartAxisLabel(value=high, label=ft.Text(f"{high/1000:.1f}k", size=10, color=ft.Colors.GREY_500)),
-            ]
+                ft.ChartAxisLabel(
+                    value=min_y + y_step * k,
+                    label=ft.Text(
+                        f"{(min_y + y_step * k) / 1000:.1f}k",
+                        size=10,
+                        color=ft.Colors.GREY_500,
+                    ),
+                )
+                for k in (1, 2, 3)
+            ],
         )
 
-        # Bottom Axis (Time labels)
         timestamps = data.get("timestamps", [])
         if timestamps and len(timestamps) >= 2:
 
@@ -189,30 +198,24 @@ def market_view_component(page: ft.Page):
                 else:
                     return dt.strftime("%b '%y")
 
+            x_step = 25
             labels = []
-            num_labels = 5
-            for i in range(num_labels):
-                idx = i * (len(timestamps) - 1) // (num_labels - 1)
-                x_val = (idx / (len(timestamps) - 1)) * 100
-                ts = timestamps[idx]
+            for x_val in range(0, 101, x_step):
+                idx = round(x_val / 100 * (len(timestamps) - 1))
                 labels.append(
                     ft.ChartAxisLabel(
                         value=x_val,
-                        label=ft.Text(fmt_ts(ts), size=10, color=ft.Colors.GREY_500)
+                        label=ft.Text(fmt_ts(timestamps[idx]), size=10, color=ft.Colors.GREY_500),
                     )
                 )
 
             persistent_chart.bottom_axis = ft.ChartAxis(
-                labels_size=20,
-                labels=labels
+                labels_size=22, labels_interval=x_step, labels=labels
             )
+            persistent_chart.left_axis = ft.ChartAxis(labels_size=0, show_labels=False)
 
-            # Ensure left axis takes no space
-            persistent_chart.left_axis = ft.ChartAxis(labels_size=0)
-
-        # Add horizontal grid lines
         persistent_chart.horizontal_grid_lines = ft.ChartGridLines(
-            interval=(high - low) / 4 if high > low else 1,
+            interval=y_step,
             color=ft.Colors.with_opacity(0.1, ft.Colors.WHITE),
             width=1,
         )

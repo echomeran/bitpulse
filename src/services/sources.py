@@ -82,7 +82,9 @@ def parse_rss(content: bytes, fallback_publisher: str) -> list[dict]:
         articles.append({
             "title": _text(item.find("title")) or "Crypto News",
             "link": _text(item.find("link")),
-            "publisher": _text(item.find(f"{_NS_DC}creator")) or fallback_publisher,
+            # dc:creator is the journalist, not the outlet the article must be attributed to.
+            "publisher": fallback_publisher,
+            "author": _text(item.find(f"{_NS_DC}creator")),
             "published_ts": published_ts,
             "published_at": format_relative_time(published_ts),
             "description": description,

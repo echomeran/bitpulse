@@ -168,7 +168,7 @@ def news_view_component(page: ft.Page, on_news_click):
                                         max_lines=2,
                                     ),
                                     ft.Text(
-                                        f"{item.get('publisher', 'CoinDesk')} · {news_service.published_label(item)}",
+                                        f"{news_service.byline(item)} · {news_service.published_label(item)}",
                                         size=11,
                                         color=ft.Colors.GREY_500,
                                     ),

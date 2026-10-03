@@ -67,6 +67,7 @@ def chat_panel(
     article_url: str = "",
     hint: str = "Ask BitPulse something…",
     chat_height: int | None = None,
+    greeting: str = "",
 ):
     """Build a chat column. With *article_url* the backend answers about that article."""
     chat_list = ft.ListView(
@@ -76,6 +77,8 @@ def chat_panel(
         auto_scroll=True,
         padding=10,
     )
+    if greeting:
+        chat_list.controls.append(create_chat_bubble(greeting, is_user=False)[0])
     conversation_history: list[dict] = []
     sending = {"value": False}
 

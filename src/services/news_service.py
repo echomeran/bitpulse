@@ -66,6 +66,13 @@ def fetch_news_from_api(api_url: str = "") -> list[dict]:
     return sources.fetch_all_news(session)
 
 
+def byline(item: dict) -> str:
+    """Publisher, with the journalist appended when the feed names one."""
+    publisher = item.get("publisher") or "CoinDesk"
+    author = (item.get("author") or "").strip()
+    return f"{publisher} · {author}" if author and author != publisher else publisher
+
+
 def published_label(item: dict) -> str:
     timestamp = item.get("published_ts")
     if timestamp is not None:
