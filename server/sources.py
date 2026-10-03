@@ -8,6 +8,7 @@ import html
 import logging
 import re
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
@@ -114,10 +115,10 @@ def dedupe_articles(articles: list[dict]) -> list[dict]:
 
 
 def fetch_all_news(session: requests.Session) -> list[dict]:
-    articles = []
-    for publisher, url in NEWS_FEEDS:
-        articles.extend(fetch_rss_feed(session, url, publisher))
-    return dedupe_articles(articles)
+    """Fetch every feed at once so one slow or blocked publisher does not delay the rest."""
+    with ThreadPoolExecutor(max_workers=len(NEWS_FEEDS)) as pool:
+        feeds = pool.map(lambda f: fetch_rss_feed(session, f[1], f[0]), NEWS_FEEDS)
+    return dedupe_articles([article for feed in feeds for article in feed])
 
 
 def is_allowed_article_url(url: str) -> bool:
@@ -224,7 +225,12 @@ def build_market_payload(price_data: dict, fng: dict | None, block_height: int |
 
 
 def fetch_market(session: requests.Session, period: str) -> dict | None:
-    price_data = fetch_yahoo_prices(session, period) or fetch_coingecko_prices(session, period)
-    if not price_data:
-        return None
-    return build_market_payload(price_data, fetch_fng(session), fetch_block_height(session), period)
+    """Fetch price, sentiment and block height concurrently; they are independent."""
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        prices = pool.submit(fetch_yahoo_prices, session, period)
+        fng = pool.submit(fetch_fng, session)
+        height = pool.submit(fetch_block_height, session)
+        price_data = prices.result() or fetch_coingecko_prices(session, period)
+        if not price_data:
+            return None
+        return build_market_payload(price_data, fng.result(), height.result(), period)

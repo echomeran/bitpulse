@@ -13,6 +13,9 @@ logger = logging.getLogger("bitpulse.news")
 NEWS_CACHE_FILE = "news_cache.json"
 NEWS_CACHE_MAX_AGE = 6 * 60 * 60
 DEFAULT_IMAGE = "icon_clean.png"
+# Short, because a sleeping free-tier backend answers in ~30s and fetching the
+# feeds directly is faster than waiting for it to wake up.
+BACKEND_TIMEOUT = (2, 5)  # (connect, read)
 
 all_news_cache: list[dict] = []
 
@@ -32,7 +35,7 @@ def fetch_full_article(api_url: str, article_url: str) -> str | None:
 def fetch_news_from_api(api_url: str = "") -> list[dict]:
     if api_url:
         try:
-            resp = session.get(f"{api_url}/v1/news", timeout=10)
+            resp = session.get(f"{api_url}/v1/news", timeout=BACKEND_TIMEOUT)
             resp.raise_for_status()
             articles = resp.json().get("articles") or []
             if articles:

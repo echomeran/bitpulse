@@ -13,6 +13,9 @@ logger = logging.getLogger("bitpulse.market")
 
 # Only read when a live fetch fails, so it may be much older than the live refresh interval.
 OFFLINE_CACHE_MAX_AGE = 24 * 60 * 60
+# Short, because a sleeping free-tier backend answers in ~30s and querying the
+# upstream APIs directly is faster than waiting for it to wake up.
+BACKEND_TIMEOUT = (2, 5)  # (connect, read)
 
 HALVING_INTERVAL = 210_000
 AVG_BLOCK_MINUTES = 10
@@ -30,7 +33,7 @@ def fetch_price_from_api(api_url: str = "", period: str = "1D") -> dict | None:
 
     if api_url:
         try:
-            resp = session.get(f"{api_url}/v1/market", params={"period": period}, timeout=12)
+            resp = session.get(f"{api_url}/v1/market", params={"period": period}, timeout=BACKEND_TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
             if data.get("prices"):
