@@ -3,9 +3,8 @@ import flet as ft
 from views.chat_panel import chat_panel
 
 GREETING = (
-    "Hi, I'm BitPulse. I can see the live BTC price, the Fear & Greed index and today's "
-    "headlines, so ask me things like \"why is the price down today?\", \"what does this "
-    "week's news mean?\" or \"explain the halving\"."
+    "I'm BitPulse, a Bitcoin market assistant. I follow the live price, market sentiment "
+    "and today's crypto headlines, and I can explain what's going on."
 )
 
 
