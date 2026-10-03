@@ -46,6 +46,7 @@ ARTICLE_CACHE_TTL = 3600
 ARTICLE_CACHE_SIZE = 200
 MAX_ARTICLE_REDIRECTS = 3
 MAX_ARTICLE_BYTES = 3 * 1024 * 1024
+ARTICLE_CONTEXT_CHARS = 12000
 
 app = FastAPI(title="BitPulse AI API", version="1.1.0")
 allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
@@ -142,6 +143,8 @@ class ChatRequest(BaseModel):
     btc_price: str = Field(default="$ --", max_length=50)
     market_summary: str = Field(default="", max_length=1000)
     news: list[NewsItem] = Field(default_factory=list, max_length=12)
+    # When the user is reading an article, the server adds its text from its own cache.
+    article_url: str = Field(default="", max_length=2000)
 
 
 SYSTEM_INSTRUCTION = """
@@ -174,11 +177,18 @@ def _format_news(items: list[NewsItem]) -> str:
     return "\n".join(lines)
 
 
-def build_prompt(payload: ChatRequest) -> str:
+def build_prompt(payload: ChatRequest, article_text: str = "") -> str:
     history = "\n".join(f"{turn.role.upper()}: {turn.text}" for turn in payload.history[-6:])
     market_context = payload.market_summary.strip() or f"Current BTC price: {payload.btc_price}"
+    article = (
+        f"\nARTICLE THE USER IS READING (answer about this unless asked otherwise):\n"
+        f"{article_text[:ARTICLE_CONTEXT_CHARS]}\n"
+        if article_text
+        else ""
+    )
     return f"""
 TODAY (UTC): {datetime.now(timezone.utc).strftime("%d %B %Y, %H:%M")}
+{article}
 
 MARKET CONTEXT:
 {market_context}
@@ -238,15 +248,35 @@ def health():
     return {"status": "ok", "ai_configured": _gemini_client() is not None, "model": CHAT_MODELS[0]}
 
 
+async def _article_context(payload: ChatRequest) -> str:
+    """Article text for the page the user is reading, from cache or a fresh fetch."""
+    url = payload.article_url
+    if not url or not sources.is_allowed_article_url(url):
+        return ""
+    cached = _cached_article(url)
+    if cached is not None:
+        return cached
+    try:
+        content = await asyncio.to_thread(_download_article, url)
+    except (requests.RequestException, ArticleFetchError) as exc:
+        logger.warning("Could not load article context %s: %s", url, exc)
+        return ""
+    text = extract_article_text(content)
+    if text:
+        _store_article(url, text)
+    return text
+
+
 @app.post("/v1/chat")
 async def chat(payload: ChatRequest, request: Request):
     client = _gemini_client()
     if client is None:
         raise HTTPException(status_code=503, detail="The AI service is not configured.")
     _enforce(chat_limiter, request)
+    prompt = build_prompt(payload, await _article_context(payload))
 
     try:
-        reply = await asyncio.wait_for(asyncio.to_thread(_generate_reply, client, build_prompt(payload)), timeout=28)
+        reply = await asyncio.wait_for(asyncio.to_thread(_generate_reply, client, prompt), timeout=28)
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="The AI provider timed out.") from None
     except Exception as exc:
@@ -290,7 +320,7 @@ async def chat_stream(payload: ChatRequest, request: Request):
         raise HTTPException(status_code=503, detail="The AI service is not configured.")
     _enforce(chat_limiter, request)
 
-    prompt = build_prompt(payload)
+    prompt = build_prompt(payload, await _article_context(payload))
     queue: asyncio.Queue[str | None] = asyncio.Queue()
     loop = asyncio.get_running_loop()
 

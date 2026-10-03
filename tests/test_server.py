@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -42,6 +44,24 @@ def test_prompt_carries_news_details_and_date():
     assert "Funds lost $200M in a day." in prompt
     assert "BTC $84,800" in prompt
     assert str(server.datetime.now(server.timezone.utc).year) in prompt
+
+
+def test_prompt_includes_article_text_when_reading_one():
+    payload = server.ChatRequest(message="what does this mean?", article_url="https://coindesk.com/a")
+    prompt = server.build_prompt(payload, "The ETF lost $200M in a day.")
+    assert "ARTICLE THE USER IS READING" in prompt
+    assert "The ETF lost $200M in a day." in prompt
+    assert "ARTICLE THE USER IS READING" not in server.build_prompt(payload)
+
+
+@pytest.mark.parametrize("url", ["", "https://example.com/a", "http://169.254.169.254/"])
+def test_article_context_skips_urls_outside_the_allowlist(url, monkeypatch):
+    def fail(*args, **kwargs):
+        raise AssertionError("must not fetch")
+
+    monkeypatch.setattr(server._session, "get", fail)
+    payload = server.ChatRequest(message="hi", article_url=url)
+    assert asyncio.run(server._article_context(payload)) == ""
 
 
 class _Busy(server.genai_errors.ServerError):

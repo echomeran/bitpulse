@@ -5,6 +5,7 @@ import flet as ft
 import services.news_service as news_service
 from services import sources
 from services.ai_service import get_api_url
+from views.chat_panel import chat_panel
 
 
 def news_detail_view_component(item, on_back_click, page):
@@ -66,11 +67,44 @@ def news_detail_view_component(item, on_back_click, page):
         ),
     )
 
+    chat_section = ft.Container(visible=False, margin=ft.margin.only(top=8))
+
+    def toggle_chat(e):
+        if chat_section.content is None:
+            chat_section.content = ft.Column(
+                spacing=0,
+                controls=[
+                    ft.Divider(height=20, color="#222222"),
+                    ft.Text(
+                        "Ask about this article",
+                        size=12,
+                        weight="bold",
+                        color=ft.Colors.BLUE_300,
+                    ),
+                    chat_panel(
+                        page,
+                        article_url=article_url,
+                        hint="e.g. why does this matter?",
+                        chat_height=320,
+                    ),
+                ],
+            )
+        chat_section.visible = not chat_section.visible
+        ask_button.text = "Hide questions" if chat_section.visible else "Ask about this article"
+        page.update()
+
     summarize_button = ft.OutlinedButton(
         "Summarize with AI",
         icon=ft.Icons.AUTO_AWESOME,
         disabled=not can_summarize,
         on_click=lambda e: start_summary(),
+    )
+
+    ask_button = ft.OutlinedButton(
+        "Ask about this article",
+        icon=ft.Icons.CHAT_BUBBLE_OUTLINE_ROUNDED,
+        disabled=not can_summarize,
+        on_click=toggle_chat,
     )
 
     summarizing = {"value": False}
@@ -149,9 +183,10 @@ def news_detail_view_component(item, on_back_click, page):
                             color=ft.Colors.GREY_500,
                         ),
                         ft.Divider(height=20, color="#222222"),
-                        summarize_button,
+                        ft.Row([summarize_button, ask_button], wrap=True, spacing=8),
                         ft.Container(height=12),
                         summary_card,
+                        chat_section,
                         loading_row,
                         content_text,
                         ft.Divider(height=30, color="#222222"),

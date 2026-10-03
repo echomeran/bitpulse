@@ -15,6 +15,22 @@ def test_chat_payload_truncates_to_server_limits():
     assert len(payload["news"]) == ai_service.MAX_NEWS_ITEMS
     assert len(payload["news"][0]["title"]) == 280
     assert len(payload["market_summary"]) == 1000
+    assert payload["article_url"] == ""
+
+
+def test_chat_payload_carries_article_and_news_details():
+    news = [{
+        "title": "ETF outflows",
+        "publisher": "CoinDesk",
+        "description": "Funds lost $200M.",
+        "categories": ["ETFs"],
+        "published_ts": 0,
+    }]
+    payload = ai_service.build_payload("hi", [], "$1", news, "", "https://coindesk.com/a")
+    assert payload["article_url"] == "https://coindesk.com/a"
+    assert payload["news"][0]["summary"] == "Funds lost $200M."
+    assert payload["news"][0]["categories"] == ["ETFs"]
+    assert payload["news"][0]["published_at"].endswith("ago")
 
 
 def test_http_session_verifies_tls():

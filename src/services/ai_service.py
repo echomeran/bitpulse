@@ -46,8 +46,10 @@ def build_payload(
     btc_price: str,
     news_items: list[dict] | None,
     market_summary: str,
+    article_url: str = "",
 ) -> dict:
     return {
+        "article_url": article_url,
         "message": message,
         "history": [
             {"role": turn["role"], "text": turn["text"][:MAX_TURN_CHARS]}
@@ -75,12 +77,13 @@ def send_chat_message(
     btc_price: str = "$ --",
     news_items: list[dict] | None = None,
     market_summary: str = "",
+    article_url: str = "",
 ) -> tuple[str | None, str | None]:
     """Return (reply, None) on success or (None, user-facing error).
 
     Retries once to ride out cold starts of the free-tier backend.
     """
-    payload = build_payload(message, history, btc_price, news_items, market_summary)
+    payload = build_payload(message, history, btc_price, news_items, market_summary, article_url)
 
     response = None
     for attempt in range(2):
@@ -125,13 +128,14 @@ def stream_chat_message(
     news_items: list[dict] | None = None,
     market_summary: str = "",
     on_chunk: Callable[[str], None] = lambda _: None,
+    article_url: str = "",
 ) -> tuple[str | None, str | None]:
     """Stream the reply, handing each piece to *on_chunk*, and return (reply, error).
 
     Falls back to the non-streaming endpoint when the backend does not serve one.
     """
-    payload = build_payload(message, history, btc_price, news_items, market_summary)
-    args = (api_url, message, history, btc_price, news_items, market_summary)
+    payload = build_payload(message, history, btc_price, news_items, market_summary, article_url)
+    args = (api_url, message, history, btc_price, news_items, market_summary, article_url)
     parts: list[str] = []
     failed = False
 
