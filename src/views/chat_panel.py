@@ -15,9 +15,40 @@ MAX_STORED_TURNS = 8
 NO_BACKEND_MESSAGE = "AI is being prepared for the mobile release. Please try again soon."
 
 
-def create_chat_bubble(text, is_user, max_width=280):
-    """Return (row, text_control); the control is updated in place while streaming."""
-    label = ft.Text(text, color=ft.Colors.WHITE, size=14, selectable=True)
+def markdown_style():
+    body = ft.TextStyle(color=ft.Colors.WHITE, size=14)
+    return ft.MarkdownStyleSheet(
+        p_text_style=body,
+        list_bullet_text_style=body,
+        h1_text_style=ft.TextStyle(color=ft.Colors.WHITE, size=18, weight=ft.FontWeight.BOLD),
+        h2_text_style=ft.TextStyle(color=ft.Colors.WHITE, size=16, weight=ft.FontWeight.BOLD),
+        h3_text_style=ft.TextStyle(color=ft.Colors.WHITE, size=15, weight=ft.FontWeight.BOLD),
+        a_text_style=ft.TextStyle(color=ft.Colors.BLUE_300, size=14),
+        code_text_style=ft.TextStyle(color=ft.Colors.ORANGE_200, size=13),
+        blockquote_text_style=ft.TextStyle(color=ft.Colors.GREY_300, size=14, italic=True),
+    )
+
+
+def create_chat_bubble(text, is_user):
+    """Return (row, content_control); the control is updated in place while streaming.
+
+    A Row leaves its children unbounded, so a bubble placed straight into one never wraps and
+    long replies run off the screen. Splitting the row into a flexible spacer and a 4/5-wide
+    column bounds the bubble while still letting short messages shrink to their content.
+    """
+    # The model answers in markdown, which reads as literal asterisks in a plain Text.
+    label = (
+        ft.Text(text, color=ft.Colors.WHITE, size=14, selectable=True)
+        if is_user
+        else ft.Markdown(
+            text,
+            selectable=True,
+            shrink_wrap=True,
+            soft_line_break=True,
+            extension_set=ft.MarkdownExtensionSet.GITHUB_FLAVORED,
+            md_style_sheet=markdown_style(),
+        )
+    )
     bubble = ft.Container(
         content=label,
         gradient=ft.LinearGradient(
@@ -38,11 +69,13 @@ def create_chat_bubble(text, is_user, max_width=280):
             color=ft.Colors.with_opacity(0.15, ft.Colors.BLACK),
         ),
     )
-    bubble.constraints = ft.BoxConstraints(max_width=max_width)
-    row = ft.Row(
-        controls=[bubble],
-        alignment=ft.MainAxisAlignment.END if is_user else ft.MainAxisAlignment.START,
+    column = ft.Column(
+        [bubble],
+        expand=4,
+        horizontal_alignment=ft.CrossAxisAlignment.END if is_user else ft.CrossAxisAlignment.START,
     )
+    spacer = ft.Container(expand=1)
+    row = ft.Row(controls=[spacer, column] if is_user else [column, spacer])
     return row, label
 
 

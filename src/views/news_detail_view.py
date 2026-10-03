@@ -5,7 +5,7 @@ import flet as ft
 import services.news_service as news_service
 from services import sources
 from services.ai_service import get_api_url
-from views.chat_panel import chat_panel
+from views.chat_panel import chat_panel, markdown_style
 
 
 def news_detail_view_component(item, on_back_click, page):
@@ -45,7 +45,14 @@ def news_detail_view_component(item, on_back_click, page):
         loading_row.visible = True
         threading.Thread(target=fetch_full, args=(api_url,), daemon=True).start()
 
-    summary_text = ft.Text("", size=14, selectable=True, color=ft.Colors.WHITE, style=ft.TextStyle(height=1.5))
+    summary_text = ft.Markdown(
+        "",
+        selectable=True,
+        shrink_wrap=True,
+        soft_line_break=True,
+        extension_set=ft.MarkdownExtensionSet.GITHUB_FLAVORED,
+        md_style_sheet=markdown_style(),
+    )
     summary_card = ft.Container(
         visible=False,
         padding=14,
@@ -121,8 +128,7 @@ def news_detail_view_component(item, on_back_click, page):
 
     def fetch_summary():
         summary, error = news_service.fetch_article_summary(api_url, article_url)
-        summary_text.value = summary or error
-        summary_text.color = ft.Colors.WHITE if summary else ft.Colors.RED_ACCENT
+        summary_text.value = summary or f"*{error}*"
         summary_card.visible = True
         summarize_button.text = "Summarize with AI"
         summarize_button.disabled = False
