@@ -32,6 +32,26 @@ def fetch_full_article(api_url: str, article_url: str) -> str | None:
         return None
 
 
+def fetch_article_summary(api_url: str, article_url: str) -> tuple[str | None, str | None]:
+    """Return (summary, None) or (None, user-facing error)."""
+    if not api_url or not sources.is_allowed_article_url(article_url):
+        return None, "Summaries are not available for this article."
+    try:
+        resp = session.get(
+            f"{api_url}/v1/news/summary", params={"url": article_url}, timeout=(5, 40)
+        )
+        if resp.status_code == 429:
+            return None, "The AI service is busy. Please try again in a minute."
+        if resp.status_code >= 400:
+            logger.warning("Summary request returned HTTP %s", resp.status_code)
+            return None, "Could not summarize this article."
+        summary = (resp.json().get("summary") or "").strip()
+        return (summary, None) if summary else (None, "Could not summarize this article.")
+    except (requests.RequestException, ValueError, AttributeError) as exc:
+        logger.warning("Summary request failed: %s", exc)
+        return None, "Could not reach the AI service."
+
+
 def fetch_news_from_api(api_url: str = "") -> list[dict]:
     if api_url:
         try:

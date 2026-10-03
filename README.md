@@ -39,6 +39,8 @@ Server settings (see `server/.env.example`):
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GEMINI_API_KEY` | — | Required for `/v1/chat`; without it chat returns 503 and `/health` reports `ai_configured: false`. |
+| `GEMINI_MODELS` | `gemini-3.5-flash,gemini-2.5-flash,gemini-3.1-flash-lite` | Tried in order. The free tier returns 503 when a model is busy and 429 once its daily quota runs out — the newest models allow as few as 20 requests a day, so keep a roomier model last. Current limits: <https://ai.dev/rate-limit>. |
+| `THINKING_BUDGET` | 256 | Thinking tokens per reply. Unbounded thinking made 2.5 Flash spend ~1,400 tokens on simple questions and sometimes return no text at all. |
 | `RATE_LIMIT_PER_HOUR` | 30 | Chat requests per client IP per hour. |
 | `ARTICLE_RATE_LIMIT_PER_HOUR` | 120 | Uncached article fetches per client IP per hour. |
 | `TRUSTED_PROXY_HOPS` | 1 | Reverse proxies in front of the server. Keep `1` on Cloud Run; use `0` when the server is exposed directly, otherwise clients can spoof `X-Forwarded-For`. |

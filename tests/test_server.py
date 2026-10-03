@@ -13,11 +13,73 @@ def client(monkeypatch):
 
 
 def test_health_reports_missing_ai_key(client):
-    assert client.get("/health").json() == {"status": "ok", "ai_configured": False}
+    body = client.get("/health").json()
+    assert body["status"] == "ok"
+    assert body["ai_configured"] is False
+    assert body["model"] == server.CHAT_MODELS[0]
 
 
 def test_chat_returns_503_without_key(client):
     assert client.post("/v1/chat", json={"message": "hi"}).status_code == 503
+    assert client.post("/v1/chat/stream", json={"message": "hi"}).status_code == 503
+    assert client.get("/v1/news/summary", params={"url": "https://coindesk.com/a"}).status_code == 503
+
+
+def test_prompt_carries_news_details_and_date():
+    payload = server.ChatRequest(
+        message="what happened?",
+        news=[{
+            "title": "ETF outflows",
+            "publisher": "CoinDesk",
+            "published_at": "2h ago",
+            "summary": "Funds lost $200M in a day.",
+            "categories": ["ETFs", "Markets"],
+        }],
+        market_summary="BTC $84,800",
+    )
+    prompt = server.build_prompt(payload)
+    assert "ETF outflows (CoinDesk, 2h ago) [ETFs, Markets]" in prompt
+    assert "Funds lost $200M in a day." in prompt
+    assert "BTC $84,800" in prompt
+    assert str(server.datetime.now(server.timezone.utc).year) in prompt
+
+
+class _Busy(server.genai_errors.ServerError):
+    def __init__(self):
+        super().__init__(503, {"error": {"message": "busy"}})
+
+
+def test_generate_reply_falls_back_to_the_next_model(monkeypatch):
+    monkeypatch.setattr(server, "CHAT_MODELS", ["busy-model", "spare-model"])
+    used = []
+
+    class FakeModels:
+        def generate_content(self, model, contents, config):
+            used.append(model)
+            if model == "busy-model":
+                raise _Busy()
+            return type("R", (), {"text": "answer", "candidates": []})()
+
+    reply = server._generate_reply(type("C", (), {"models": FakeModels()})(), "prompt")
+    assert reply == "answer"
+    assert used == ["busy-model", "spare-model"]
+
+
+def test_generate_reply_reraises_non_overload_errors(monkeypatch):
+    monkeypatch.setattr(server, "CHAT_MODELS", ["a", "b"])
+
+    class FakeModels:
+        def generate_content(self, model, contents, config):
+            raise ValueError("bad request")
+
+    with pytest.raises(ValueError):
+        server._generate_reply(type("C", (), {"models": FakeModels()})(), "prompt")
+
+
+def test_summary_endpoint_rejects_foreign_urls(client, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    server._gemini_client.cache_clear()
+    assert client.get("/v1/news/summary", params={"url": "https://example.com/a"}).status_code == 400
 
 
 def test_chat_accepts_long_assistant_history():

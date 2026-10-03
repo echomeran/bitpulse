@@ -39,9 +39,62 @@ def news_detail_view_component(item, on_back_click, page):
             loading_row.update()
 
     api_url = get_api_url()
-    if api_url and sources.is_allowed_article_url(article_url):
+    can_summarize = bool(api_url) and sources.is_allowed_article_url(article_url)
+    if can_summarize:
         loading_row.visible = True
         threading.Thread(target=fetch_full, args=(api_url,), daemon=True).start()
+
+    summary_text = ft.Text("", size=14, selectable=True, color=ft.Colors.WHITE, style=ft.TextStyle(height=1.5))
+    summary_card = ft.Container(
+        visible=False,
+        padding=14,
+        bgcolor="#0F172A",
+        border_radius=14,
+        margin=ft.margin.only(bottom=16),
+        content=ft.Column(
+            spacing=8,
+            controls=[
+                ft.Row(
+                    spacing=6,
+                    controls=[
+                        ft.Icon(ft.Icons.AUTO_AWESOME, color=ft.Colors.BLUE_400, size=16),
+                        ft.Text("AI summary", size=12, weight="bold", color=ft.Colors.BLUE_300),
+                    ],
+                ),
+                summary_text,
+            ],
+        ),
+    )
+
+    summarize_button = ft.OutlinedButton(
+        "Summarize with AI",
+        icon=ft.Icons.AUTO_AWESOME,
+        disabled=not can_summarize,
+        on_click=lambda e: start_summary(),
+    )
+
+    summarizing = {"value": False}
+
+    def start_summary():
+        if summarizing["value"]:
+            return
+        summarizing["value"] = True
+        summarize_button.text = "Summarizing…"
+        summarize_button.disabled = True
+        if summarize_button.page:
+            summarize_button.update()
+        threading.Thread(target=fetch_summary, daemon=True).start()
+
+    def fetch_summary():
+        summary, error = news_service.fetch_article_summary(api_url, article_url)
+        summary_text.value = summary or error
+        summary_text.color = ft.Colors.WHITE if summary else ft.Colors.RED_ACCENT
+        summary_card.visible = True
+        summarize_button.text = "Summarize with AI"
+        summarize_button.disabled = False
+        summarizing["value"] = False
+        if summarize_button.page:
+            page.update()
 
     back_bar = ft.Container(
         bgcolor="#121212",
@@ -96,6 +149,9 @@ def news_detail_view_component(item, on_back_click, page):
                             color=ft.Colors.GREY_500,
                         ),
                         ft.Divider(height=20, color="#222222"),
+                        summarize_button,
+                        ft.Container(height=12),
+                        summary_card,
                         loading_row,
                         content_text,
                         ft.Divider(height=30, color="#222222"),
