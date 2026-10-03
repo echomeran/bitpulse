@@ -26,7 +26,13 @@ Copy-Item .env.example .env
 ..\venv\Scripts\uvicorn.exe app:app --host 0.0.0.0 --port 8080
 ```
 
-For production, deploy `server` to a TLS-enabled service such as Render or Cloud Run. Put the public HTTPS URL in `src/assets/app_config.json` as `ai_api_url`, then rebuild the APK. The URL is public; the Gemini key stays only on the server.
+Production runs on Google Cloud Run, which scales to zero and wakes in about a second, so no keep-alive pinging is needed:
+
+```powershell
+.\scripts\deploy-cloudrun.ps1
+```
+
+The script reads `GEMINI_API_KEY` from `server\.env` and passes it as a Cloud Run environment variable, so the key never reaches the APK or the command line. After deploying, put the service URL in `src/assets/app_config.json` as `ai_api_url` and rebuild the APK. That URL is public; the Gemini key stays only on the server.
 
 Server settings (see `server/.env.example`):
 
@@ -35,7 +41,7 @@ Server settings (see `server/.env.example`):
 | `GEMINI_API_KEY` | — | Required for `/v1/chat`; without it chat returns 503 and `/health` reports `ai_configured: false`. |
 | `RATE_LIMIT_PER_HOUR` | 30 | Chat requests per client IP per hour. |
 | `ARTICLE_RATE_LIMIT_PER_HOUR` | 120 | Uncached article fetches per client IP per hour. |
-| `TRUSTED_PROXY_HOPS` | 1 | Reverse proxies in front of the server. Keep `1` on Render/Cloud Run; use `0` when the server is exposed directly, otherwise clients can spoof `X-Forwarded-For`. |
+| `TRUSTED_PROXY_HOPS` | 1 | Reverse proxies in front of the server. Keep `1` on Cloud Run; use `0` when the server is exposed directly, otherwise clients can spoof `X-Forwarded-For`. |
 
 `server/sources.py` and `src/services/sources.py` are the same module shared by the server and the app's offline fallback. Edit one and copy it to the other; a test fails if they differ.
 
