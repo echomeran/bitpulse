@@ -24,13 +24,16 @@ NEWS_FEEDS = (
 ARTICLE_HOSTS = ("coindesk.com", "cointelegraph.com")
 MAX_ARTICLES = 50
 
+# "window" trims to a trailing span in seconds. Yahoo's "1d" range means "since 00:00 UTC", so
+# 1H and 1D fetch two days and keep the last hour / 24 hours; otherwise 1D showed only the
+# hours since midnight UTC and 1H was nearly empty just after it.
 PERIOD_CONFIG = {
-    "1H": {"interval": "2m", "range": "1d", "slice": -30, "coingecko_days": "1"},
-    "1D": {"interval": "15m", "range": "1d", "slice": None, "coingecko_days": "1"},
-    "1W": {"interval": "1h", "range": "1mo", "slice": -168, "coingecko_days": "7"},
-    "1M": {"interval": "1d", "range": "1mo", "slice": None, "coingecko_days": "30"},
-    "1Y": {"interval": "1d", "range": "1y", "slice": None, "coingecko_days": "365"},
-    "5Y": {"interval": "1wk", "range": "5y", "slice": None, "coingecko_days": "1825"},
+    "1H": {"interval": "2m", "range": "2d", "window": 3600, "coingecko_days": "1"},
+    "1D": {"interval": "15m", "range": "2d", "window": 86400, "coingecko_days": "1"},
+    "1W": {"interval": "1h", "range": "1mo", "window": 7 * 86400, "coingecko_days": "7"},
+    "1M": {"interval": "1d", "range": "1mo", "window": None, "coingecko_days": "30"},
+    "1Y": {"interval": "1d", "range": "1y", "window": None, "coingecko_days": "365"},
+    "5Y": {"interval": "1wk", "range": "5y", "window": None, "coingecko_days": "1825"},
 }
 
 _TAG_RE = re.compile(r"<[^<]+>")
@@ -140,6 +143,14 @@ def is_allowed_article_url(url: str) -> bool:
 
 # ================= MARKET =================
 
+def trim_to_window(points: list[tuple[int, float]], window: int | None) -> list[tuple[int, float]]:
+    """Keep the (timestamp, price) points within *window* seconds of the newest one."""
+    if not window or not points:
+        return points
+    cutoff = points[-1][0] - window
+    return [(t, p) for t, p in points if t >= cutoff]
+
+
 def fetch_yahoo_prices(session: requests.Session, period: str) -> dict | None:
     cfg = PERIOD_CONFIG[period]
     try:
@@ -155,8 +166,7 @@ def fetch_yahoo_prices(session: requests.Session, period: str) -> dict | None:
         timestamps = result[0].get("timestamp") or []
         closes = (result[0].get("indicators", {}).get("quote") or [{}])[0].get("close") or []
         valid = [(t, p) for t, p in zip(timestamps, closes, strict=False) if p is not None]
-        if cfg["slice"]:
-            valid = valid[cfg["slice"]:]
+        valid = trim_to_window(valid, cfg["window"])
         if not valid:
             return None
         return {"timestamps": [t for t, _ in valid], "prices": [p for _, p in valid]}
@@ -174,11 +184,10 @@ def fetch_coingecko_prices(session: requests.Session, period: str) -> dict | Non
         )
         r.raise_for_status()
         raw = r.json().get("prices") or []
-        if period == "1H":
-            raw = raw[-30:]
-        if not raw:
+        valid = trim_to_window([(int(t / 1000), p) for t, p in raw], PERIOD_CONFIG[period]["window"])
+        if not valid:
             return None
-        return {"timestamps": [int(p[0] / 1000) for p in raw], "prices": [p[1] for p in raw]}
+        return {"timestamps": [t for t, _ in valid], "prices": [p for _, p in valid]}
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
         logger.warning("CoinGecko fetch failed: %s", exc)
         return None

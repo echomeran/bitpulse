@@ -105,3 +105,18 @@ def test_build_market_payload():
     assert payload["low"] == 90.0
     assert payload["change_pct"] == pytest.approx(10.0)
     assert payload["block_height"] == 900_000
+
+
+def test_short_periods_keep_a_trailing_window_not_the_utc_day():
+    from sources import PERIOD_CONFIG, trim_to_window
+
+    hour = 3600
+    # Two days of 15-minute points ending at 14:00 UTC.
+    points = [(t, float(t)) for t in range(0, 2 * 24 * hour, 15 * 60)]
+    day = trim_to_window(points, PERIOD_CONFIG["1D"]["window"])
+    assert day[-1][0] - day[0][0] == 24 * hour
+    last_hour = trim_to_window(points, PERIOD_CONFIG["1H"]["window"])
+    assert last_hour[-1][0] - last_hour[0][0] == hour
+    assert trim_to_window(points, None) == points
+    assert trim_to_window([], 3600) == []
+    assert all(PERIOD_CONFIG[p]["range"] != "1d" for p in ("1H", "1D"))

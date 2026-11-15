@@ -133,3 +133,72 @@ def test_price_axis_contains_the_whole_series(lo, hi):
     assert 2 <= (max_y - min_y) // step <= 7
     labels = [format_axis_price(v, step) for v in range(min_y + step, max_y, step)]
     assert len(labels) == len(set(labels))
+
+
+class _FakeStream:
+    def __init__(self, status=200, pieces=(), exc=None):
+        self.status_code, self.pieces, self.exc, self.encoding = status, pieces, exc, "utf-8"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def iter_content(self, chunk_size=None, decode_unicode=False):
+        yield from self.pieces
+        if self.exc:
+            raise self.exc
+
+
+def _queue_responses(monkeypatch, *responses):
+    queue = list(responses)
+    monkeypatch.setattr(ai_service.time, "sleep", lambda _: None)
+
+    def post(*args, **kwargs):
+        item = queue.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    monkeypatch.setattr(ai_service.session, "post", post)
+    return queue
+
+
+def test_stream_retries_once_when_the_first_attempt_fails_before_any_text(monkeypatch):
+    left = _queue_responses(monkeypatch, _FakeStream(503), _FakeStream(pieces=["Hello ", "there"]))
+    shown = []
+    reply, error = ai_service.stream_chat_message("u", "hi", [], on_chunk=shown.append)
+    assert (reply, error) == ("Hello there", None)
+    assert shown == ["Hello ", "there"] and left == []
+
+
+def test_stream_retries_after_a_server_side_timeout_marker(monkeypatch):
+    _queue_responses(
+        monkeypatch,
+        _FakeStream(pieces=[ai_service.STREAM_ERROR_MARKER]),
+        _FakeStream(pieces=["ok"]),
+    )
+    assert ai_service.stream_chat_message("u", "hi", []) == ("ok", None)
+
+
+def test_stream_flags_an_answer_that_was_cut_off(monkeypatch):
+    import requests
+
+    _queue_responses(monkeypatch, _FakeStream(pieces=["Partial"], exc=requests.ConnectionError()))
+    reply, error = ai_service.stream_chat_message("u", "hi", [])
+    assert error is None
+    assert reply == "Partial" + ai_service.INTERRUPTED_NOTE
+
+
+def test_stream_gives_up_after_two_failures(monkeypatch):
+    import requests
+
+    _queue_responses(monkeypatch, requests.Timeout(), requests.Timeout())
+    assert ai_service.stream_chat_message("u", "hi", []) == (None, ai_service.ERR_TIMEOUT)
+
+
+def test_stream_does_not_retry_client_errors(monkeypatch):
+    left = _queue_responses(monkeypatch, _FakeStream(400), _FakeStream(pieces=["never"]))
+    assert ai_service.stream_chat_message("u", "hi", []) == (None, ai_service.ERR_UNAVAILABLE)
+    assert len(left) == 1

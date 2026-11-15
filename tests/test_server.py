@@ -96,6 +96,40 @@ def test_generate_reply_reraises_non_overload_errors(monkeypatch):
         server._generate_reply(type("C", (), {"models": FakeModels()})(), "prompt")
 
 
+def _chunk(text, finish=None):
+    candidate = type("Cand", (), {"finish_reason": finish})()
+    return type("Chunk", (), {"text": text, "candidates": [candidate]})()
+
+
+def test_stream_marks_a_reply_cut_by_the_token_cap(monkeypatch):
+    monkeypatch.setattr(server, "CHAT_MODELS", ["m"])
+
+    class FakeModels:
+        def generate_content_stream(self, model, contents, config):
+            yield _chunk("Half an ans")
+            yield _chunk("wer", server.types.FinishReason.MAX_TOKENS)
+
+    pieces = list(server._stream_reply(type("C", (), {"models": FakeModels()})(), "prompt"))
+    assert "".join(pieces) == "Half an answer" + server.TRUNCATED_NOTE
+
+
+def test_stream_leaves_a_finished_reply_alone(monkeypatch):
+    monkeypatch.setattr(server, "CHAT_MODELS", ["m"])
+
+    class FakeModels:
+        def generate_content_stream(self, model, contents, config):
+            yield _chunk("Done.", server.types.FinishReason.STOP)
+
+    assert list(server._stream_reply(type("C", (), {"models": FakeModels()})(), "prompt")) == ["Done."]
+
+
+def test_thinking_limit_matches_each_model_family():
+    assert server._thinking_config("gemini-2.5-flash").thinking_budget == server.THINKING_BUDGET
+    assert server._thinking_config("gemini-2.5-flash", budget=0).thinking_budget == 0
+    gemini3 = server._thinking_config("gemini-3.5-flash")
+    assert gemini3.thinking_budget is None and gemini3.thinking_level is not None
+
+
 def test_summary_endpoint_rejects_foreign_urls(client, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     server._gemini_client.cache_clear()

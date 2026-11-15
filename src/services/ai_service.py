@@ -25,6 +25,7 @@ ERR_TIMEOUT = "The AI service took too long to respond. Please try again."
 ERR_BUSY = "The AI service is busy. Please try again in a minute."
 ERR_UNAVAILABLE = "The AI service is temporarily unavailable. Please try again."
 ERR_EMPTY = "The AI service returned an empty response."
+INTERRUPTED_NOTE = "\n\n*(The connection dropped before the answer finished. Please ask again.)*"
 
 
 def get_api_url() -> str:
@@ -136,36 +137,55 @@ def stream_chat_message(
     """
     payload = build_payload(message, history, btc_price, news_items, market_summary, article_url)
     args = (api_url, message, history, btc_price, news_items, market_summary, article_url)
-    parts: list[str] = []
-    failed = False
 
-    try:
-        with session.post(f"{api_url}/v1/chat/stream", json=payload, timeout=(5, 45), stream=True) as response:
-            if response.status_code == 404:
-                return send_chat_message(*args)
-            if response.status_code == 429:
-                return None, ERR_BUSY
-            if response.status_code >= 400:
-                logger.warning("AI backend returned HTTP %s", response.status_code)
-                return None, ERR_UNAVAILABLE
-
-            response.encoding = response.encoding or "utf-8"
-            for piece in response.iter_content(chunk_size=None, decode_unicode=True):
-                if not piece:
-                    continue
-                if STREAM_ERROR_MARKER in piece:
+    # One retry, but only while nothing has been shown yet: a cold start or a busy model fails
+    # before the first byte, and the second attempt usually lands on a warm instance.
+    for attempt in range(2):
+        parts: list[str] = []
+        failed = False
+        retry = False
+        error = ERR_UNAVAILABLE
+        try:
+            with session.post(f"{api_url}/v1/chat/stream", json=payload, timeout=(10, 60), stream=True) as response:
+                if response.status_code == 404:
+                    return send_chat_message(*args)
+                if response.status_code == 429:
+                    return None, ERR_BUSY
+                if response.status_code >= 400:
+                    logger.warning("AI backend returned HTTP %s", response.status_code)
                     failed = True
-                    piece = piece.replace(STREAM_ERROR_MARKER, "")
-                if piece:
-                    parts.append(piece)
-                    on_chunk(piece)
-                if failed:
-                    break
-    except requests.RequestException as exc:
-        logger.warning("Streaming chat failed: %s", exc)
-        return (None, ERR_UNREACHABLE) if not parts else ("".join(parts), None)
+                    retry = response.status_code in (502, 503, 504)
+                else:
+                    response.encoding = response.encoding or "utf-8"
+                    for piece in response.iter_content(chunk_size=None, decode_unicode=True):
+                        if not piece:
+                            continue
+                        if STREAM_ERROR_MARKER in piece:
+                            failed = True
+                            piece = piece.replace(STREAM_ERROR_MARKER, "")
+                        if piece:
+                            parts.append(piece)
+                            on_chunk(piece)
+                        if failed:
+                            break
+                    retry = failed and not parts
+        except requests.RequestException as exc:
+            logger.warning("Streaming chat failed: %s", exc)
+            failed = True
+            retry = not parts
+            error = ERR_TIMEOUT if isinstance(exc, requests.Timeout) else ERR_UNREACHABLE
+
+        if retry and attempt == 0:
+            time.sleep(2)
+            continue
+        break
 
     reply = "".join(parts).strip()
+    if reply and failed:
+        # Keep what arrived, but never pass a cut-off answer off as complete.
+        note = INTERRUPTED_NOTE
+        on_chunk(note)
+        return reply + note, None
     if reply:
         return reply, None
-    return None, ERR_UNAVAILABLE if failed else ERR_EMPTY
+    return None, error if failed else ERR_EMPTY
