@@ -112,3 +112,24 @@ def test_news_filters(item, label):
 
 def test_filters_do_not_match_everything():
     assert not any(matches_filter({"title": "weather report"}, label) for label in FILTERS)
+
+
+@pytest.mark.parametrize("lo,hi", [
+    (64863.01, 65498.33),   # 1H screenshot that clipped the top
+    (62074.48, 65891.94),   # 1D
+    (62573.91, 75845.03),   # 1W
+    (64128.05, 84011.97),   # 1M
+    (15500.0, 126000.0),    # 5Y-sized range
+    (65000.0, 65000.0),     # flat series
+    (65000.0, 65003.0),     # tiny range
+])
+def test_price_axis_contains_the_whole_series(lo, hi):
+    from views.market_view import format_axis_price, price_axis
+
+    min_y, max_y, step = price_axis(lo, hi)
+    assert min_y < lo and hi < max_y
+    assert isinstance(step, int) and step >= 1
+    assert (max_y - min_y) % step == 0
+    assert 2 <= (max_y - min_y) // step <= 7
+    labels = [format_axis_price(v, step) for v in range(min_y + step, max_y, step)]
+    assert len(labels) == len(set(labels))

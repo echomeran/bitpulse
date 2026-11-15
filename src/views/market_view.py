@@ -11,6 +11,35 @@ from services.ai_service import get_api_url
 logger = logging.getLogger("bitpulse.market_view")
 
 
+def price_axis(lo: float, hi: float) -> tuple[int, int, int]:
+    """Pick (min_y, max_y, step) for the price axis so [lo, hi] always fits inside it.
+
+    The step is a whole-dollar 1/2/5 x 10^n value (labels only draw where they land exactly
+    on a tick, so fractional steps would hide them), and both bounds sit on the tick grid.
+    """
+    if hi < lo:
+        lo, hi = hi, lo
+    span = hi - lo
+    pad = span * 0.04 if span > 0 else max(abs(hi) * 0.01, 1)
+    lo, hi = lo - pad, hi + pad
+
+    raw = (hi - lo) / 5
+    magnitude = 10 ** max(0, math.floor(math.log10(raw))) if raw >= 1 else 1
+    step = next(m * magnitude for m in (1, 2, 5, 10) if m * magnitude >= raw)
+
+    min_y = math.floor(lo / step) * step
+    max_y = math.ceil(hi / step) * step
+    return min_y, max_y, step
+
+
+def format_axis_price(value: float, step: int) -> str:
+    if step >= 1000:
+        return f"{value / 1000:.0f}k"
+    if step >= 100:
+        return f"{value / 1000:.1f}k"
+    return f"{value:,.0f}"
+
+
 def market_view_component(page: ft.Page):
     state_lock = threading.Lock()
     state = {"loading": False, "pending": None}
@@ -64,6 +93,8 @@ def market_view_component(page: ft.Page):
         color=ft.Colors.ORANGE_ACCENT,
         stroke_width=2,
         curved=True,
+        # Without this the smoothed curve bulges past the real high/low on sharp moves.
+        prevent_curve_over_shooting=True,
         below_line_bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ORANGE_ACCENT),
     )
 
@@ -159,30 +190,28 @@ def market_view_component(page: ft.Page):
         else:
             points = [ft.LineChartDataPoint(0, prices[0])] if prices else []
 
-        # A label is only drawn where it lands exactly on a tick, so both axes place their labels
-        # on the tick grid and set the matching interval. Whole dollars keep tick arithmetic exact;
-        # with fractional steps the computed ticks miss the label values and nothing is drawn.
-        padding = (high - low) * 0.05 if high > low else (high * 0.05 if high else 1)
-        y_step = max(1, round((high - low + 2 * padding) / 4))
-        min_y = math.floor((low - padding) / y_step) * y_step
-        max_y = min_y + 4 * y_step
+        # Scale to the plotted prices: the headline high/low can come from a different window
+        # than the series, and anything outside [min_y, max_y] is drawn off the chart.
+        min_y, max_y, y_step = price_axis(min(prices), max(prices))
         persistent_chart.min_y = min_y
         persistent_chart.max_y = max_y
         persistent_chart.min_x = 0
         persistent_chart.max_x = 100
+        # A label is only drawn where it lands exactly on a tick, so labels sit on the tick grid
+        # and the axis interval matches the grid step.
         persistent_chart.right_axis = ft.ChartAxis(
             labels_size=44,
             labels_interval=y_step,
             labels=[
                 ft.ChartAxisLabel(
-                    value=min_y + y_step * k,
+                    value=v,
                     label=ft.Text(
-                        f"{(min_y + y_step * k) / 1000:.1f}k",
+                        format_axis_price(v, y_step),
                         size=10,
                         color=ft.Colors.GREY_500,
                     ),
                 )
-                for k in (1, 2, 3)
+                for v in range(min_y + y_step, max_y, y_step)
             ],
         )
 
