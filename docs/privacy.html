@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BitPulse Privacy Policy</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1f2328; --muted: #57606a; --bg: #ffffff; --line: #d0d7de; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e6edf3; --muted: #9aa4af; --bg: #0d1117; --line: #30363d; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.8rem; margin-bottom: 0; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .muted { color: var(--muted); }
+  li { margin: 4px 0; }
+  a { color: #2f81f7; }
+</style>
+</head>
+<body>
+<main>
+<h1>BitPulse Privacy Policy</h1>
+<p class="muted">Effective date: 23 November 2026</p>
+
+<p>BitPulse is a free Android app that shows Bitcoin news, price charts and an AI assistant that
+explains the market. This policy explains what information the app handles, why, and who it is
+shared with. In short: BitPulse has no accounts, no ads, no analytics and no tracking, and it does
+not sell any data.</p>
+
+<h2>Information you give us</h2>
+<ul>
+  <li><strong>Questions you ask the AI assistant.</strong> When you send a message, the app sends it to
+    the BitPulse server together with the last few messages of the same conversation, the current
+    Bitcoin price, recent headlines, and the address of the article you are reading (if any). The
+    server adds that article's text and passes everything to Google's Gemini API to generate the
+    answer. Do not type personal information (names, account numbers, passwords, private keys)
+    into the chat.</li>
+  <li><strong>Reports.</strong> If you tap <em>Report</em> under an AI answer, the question, the answer and
+    the article address are sent to the BitPulse server and stored in its log so the developer can
+    review problems with AI answers.</li>
+</ul>
+
+<h2>Information collected automatically</h2>
+<ul>
+  <li><strong>Server logs.</strong> Like most web services, the BitPulse server (hosted on Google Cloud Run)
+    records each request: the time, the address requested, your IP address and the app's user
+    agent. These logs are used to keep the service running and to stop abuse, and are kept for
+    about 30 days.</li>
+  <li><strong>Rate limiting.</strong> To prevent abuse, the server counts requests per IP address in memory
+    for up to one hour. These counts are not stored.</li>
+</ul>
+<p>BitPulse does not collect your name, email address, contacts, location, device identifiers or
+advertising ID, and it does not use cookies or analytics.</p>
+
+<h2>Information stored on your phone</h2>
+<p>The app saves the latest news list and price charts on your phone so it can show them quickly
+at launch and when you are offline. Chat conversations are not saved; they disappear when you close
+the app. Uninstalling the app, or clearing its storage, removes this data.</p>
+
+<h2>Third parties</h2>
+<ul>
+  <li><strong>Google (Gemini API and Google Cloud).</strong> AI questions are processed by Google's Gemini
+    API, and the server runs on Google Cloud in the European Union (Frankfurt). BitPulse uses the
+    Gemini API's free tier; under Google's terms for that tier, Google may use the content sent to
+    it to improve its products, and human reviewers may read it. See the
+    <a href="https://ai.google.dev/gemini-api/terms">Gemini API Additional Terms</a> and the
+    <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</li>
+  <li><strong>Data sources.</strong> Prices, news and market data come from Yahoo Finance, CoinGecko,
+    alternative.me, Blockstream, mempool.space, Cointelegraph, CoinDesk, the U.S. Securities and
+    Exchange Commission (SEC), the U.S. Commodity Futures Trading Commission (CFTC) and Bitcoin
+    Optech. Normally the BitPulse
+    server contacts them, so they do not see your IP address; if the server cannot be reached, the
+    app contacts them directly, and they then receive your IP address like any website you visit.</li>
+  <li><strong>Articles you open.</strong> Opening an article in your browser takes you to the publisher's
+    website, which has its own privacy policy.</li>
+</ul>
+
+<h2>Security</h2>
+<p>All traffic between the app and the BitPulse server is encrypted with HTTPS. The API key for the
+AI service is kept on the server and never shipped in the app.</p>
+
+<h2>Children</h2>
+<p>BitPulse is not directed at children under 13 and does not knowingly collect information from
+them.</p>
+
+<h2>Your choices</h2>
+<p>You can use the news and market features without using the AI assistant. If you would like a
+report or log entry removed, contact us with the approximate time and we will delete what we can
+find.</p>
+
+<h2>Changes</h2>
+<p>If this policy changes, the new version will be posted on this page with a new effective date.</p>
+
+<h2>Contact</h2>
+<p>Questions about this policy: <a href="mailto:bitpulseapp.support@gmail.com">bitpulseapp.support@gmail.com</a></p>
+</main>
+</body>
+</html>

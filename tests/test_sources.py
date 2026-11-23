@@ -146,3 +146,10 @@ def test_recent_regulator_items_survive_the_headline_cap():
     kept = [a["link"] for a in merged if a["link"].startswith("r")]
     assert len(kept) == REGULATOR_MAX_ITEMS and "sec-old" not in [a["link"] for a in merged]
     assert merged[0]["link"] == "n0"  # still newest first
+
+
+def test_sec_requests_carry_a_contact_address():
+    from sources import CONTACT_EMAIL, request_headers
+
+    assert CONTACT_EMAIL in request_headers("https://www.sec.gov/newsroom/press-releases/x")["User-Agent"]
+    assert request_headers("https://cointelegraph.com/news/x") == {}

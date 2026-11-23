@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import xml.etree.ElementTree as ET
 from collections import OrderedDict, defaultdict, deque
@@ -427,7 +428,9 @@ def _download_article(url: str) -> bytes:
     for _ in range(MAX_ARTICLE_REDIRECTS + 1):
         if not sources.is_allowed_article_url(url):
             raise ArticleFetchError(f"Blocked article URL: {url}")
-        with _session.get(url, timeout=10, allow_redirects=False, stream=True) as resp:
+        with _session.get(
+            url, timeout=10, allow_redirects=False, stream=True, headers=sources.request_headers(url)
+        ) as resp:
             if resp.is_redirect:
                 url = urljoin(url, resp.headers.get("location", ""))
                 continue
@@ -443,8 +446,22 @@ def extract_article_text(content: bytes) -> str:
     soup = BeautifulSoup(content, "html.parser")
     for tag in soup(["script", "style", "nav", "header", "footer", "aside"]):
         tag.decompose()
+    # Government sites put "An official website of the United States government" banners in
+    # <p> tags outside the story, so read from the main content area when the page marks one.
+    # Some news sites use <article> for a teaser box instead, so fall back to the whole page
+    # when the marked area holds almost no text.
+    for container in (soup.find("article"), soup.find("main"), soup):
+        if container is None:
+            continue
+        text = "\n\n".join(_paragraphs(container))
+        if len(text) >= 300 or container is soup:
+            return text
+    return ""
+
+
+def _paragraphs(container) -> list[str]:
     blocks = []
-    for p in soup.find_all("p"):
+    for p in container.find_all("p"):
         # A separator keeps words apart across inline tags; get_text(strip=True) alone glued
         # "the <a>agenda</a> for" into "theagendafor".
         text = re.sub(r"\s+", " ", p.get_text(" ", strip=True))
@@ -452,7 +469,7 @@ def extract_article_text(content: bytes) -> str:
         text = re.sub(r"([(\[‘“$])\s+", r"\1", text)
         if len(text) > 40 and "cookie" not in text.lower():
             blocks.append(text)
-    return "\n\n".join(blocks)
+    return blocks
 
 
 def _cached_article(url: str) -> str | None:
@@ -617,7 +634,7 @@ OPTECH_BASE = "https://bitcoinops.org/"
 NEWSLETTER_CACHE_TTL = 3600
 _ATOM = "{http://www.w3.org/2005/Atom}"
 _NEWSLETTER_TITLE = re.compile(r"Newsletter #(\d+)$")
-_newsletter_cache: dict = {"items": [], "content": {}, "ts": 0.0}
+_newsletter_cache: dict = {"items": [], "content": {}, "sections": {}, "ts": 0.0}
 
 
 def newsletter_markdown(html_text: str) -> str:
@@ -638,9 +655,71 @@ def newsletter_markdown(html_text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+_TOPIC_LINK = re.compile(r"/en/topics/([a-z0-9-]+)/?")
+WORDS_PER_MINUTE = 220
+
+
+def _preview(markdown: str, limit: int = 180) -> str:
+    """First sentence of an item, links reduced to their text, for the collapsed card."""
+    plain = re.sub(r"[*_`]", "", _MD_LINK.sub(r"\1", markdown)).strip()
+    sentence = re.split(r"(?<=[.!?])\s", plain, maxsplit=1)[0]
+    return sentence if len(sentence) <= limit else sentence[: limit - 1].rsplit(" ", 1)[0] + "…"
+
+
+def newsletter_sections(html_text: str) -> list[dict]:
+    """Split an Optech newsletter into sections of titled items, so the app can show cards.
+
+    Optech writes every item as <li class="anchor-list"> with a <strong>Title:</strong> lead,
+    grouped under <h2> section headings that may open with a short paragraph.
+    """
+    soup = BeautifulSoup(html_text, "html.parser")
+    sections = []
+    for heading in soup.find_all("h2"):
+        section = {"title": heading.get_text(strip=True), "intro": "", "items": []}
+        for sibling in heading.find_next_siblings():
+            if sibling.name == "h2":
+                break
+            if sibling.name == "p" and not section["items"] and not section["intro"]:
+                section["intro"] = newsletter_markdown(str(sibling))
+            for li in sibling.find_all("li", class_="anchor-list") if sibling.name in ("ul", "ol") else []:
+                topics = sorted({m.group(1).replace("-", " ") for a in li.find_all("a", href=True)
+                                 if (m := _TOPIC_LINK.search(a["href"]))})
+                lead = li.find("strong")
+                if lead:
+                    title = lead.get_text(" ", strip=True).rstrip(":").strip()
+                    lead.decompose()
+                    body = newsletter_markdown(str(li)).lstrip("-: ").strip()
+                    preview = _preview(body)
+                else:
+                    # Release and code-change items open with a link to the project instead,
+                    # e.g. "<a>Bitcoin Core #36757</a> fixes a privacy leak..."
+                    first = next((a for a in li.find_all("a", href=True)
+                                  if not a["href"].startswith("#")), None)
+                    title = first.get_text(" ", strip=True) if first else ""
+                    body = newsletter_markdown(str(li)).lstrip("-: ").strip()
+                    preview = _preview(body)
+                    if title and preview.startswith(title):
+                        rest = preview[len(title):].strip()
+                        preview = rest[:1].upper() + rest[1:] if rest else preview
+                section["items"].append({
+                    "title": title or _preview(body, 80),
+                    "markdown": body,
+                    "preview": preview,
+                    "topics": topics,
+                })
+        if section["items"]:
+            sections.append(section)
+    return sections
+
+
 def parse_optech_feed(content: bytes) -> tuple[list[dict], dict[str, str]]:
-    """Return (newsletter list newest first, {url: markdown}). Podcast recaps are left out."""
+    """Return (newsletter list newest first, {url: markdown}). Podcast recaps are left out.
+
+    The split into sections goes into _newsletter_cache["sections"] keyed by URL.
+    """
     items, bodies = [], {}
+    sections_by_url: dict[str, list[dict]] = {}
     for entry in ET.fromstring(content).iter(f"{_ATOM}entry"):
         title = (entry.findtext(f"{_ATOM}title") or "").strip()
         match = _NEWSLETTER_TITLE.search(title)
@@ -653,9 +732,14 @@ def parse_optech_feed(content: bytes) -> tuple[list[dict], dict[str, str]]:
             ts = datetime.fromisoformat(published).timestamp()
         except ValueError:
             ts = None
-        body = newsletter_markdown(entry.findtext(f"{_ATOM}content") or "")
+        raw_html = entry.findtext(f"{_ATOM}content") or ""
+        body = newsletter_markdown(raw_html)
         intro = body.split("\n\n", 1)[0][:400]
+        sections = newsletter_sections(raw_html)
+        sections_by_url[url] = sections
         items.append({
+            "counts": {s["title"]: len(s["items"]) for s in sections if s["items"]},
+            "reading_minutes": max(1, round(len(body.split()) / WORDS_PER_MINUTE)),
             "number": int(match.group(1)),
             "title": title,
             "url": url,
@@ -667,7 +751,24 @@ def parse_optech_feed(content: bytes) -> tuple[list[dict], dict[str, str]]:
         })
         bodies[url] = body
     items.sort(key=lambda i: i["number"], reverse=True)
+    _newsletter_cache["sections"] = {**_newsletter_cache.get("sections", {}), **sections_by_url}
     return items, bodies
+
+
+def _warm_digest(url: str) -> None:
+    """Write the plain-language digest of the newest issue ahead of time, so readers never wait."""
+    client = _gemini_client()
+    text = _newsletter_cache["content"].get(url)
+    key = f"simple|{url}"
+    if client is None or not text or key in _summary_cache:
+        return
+    try:
+        digest = bullet_lines_only(_summarize(client, text, SIMPLE_SUMMARY_INSTRUCTION))
+    except Exception as exc:
+        logger.warning("Newsletter digest failed: %s", exc)
+        return
+    if digest:
+        _summary_cache[key] = digest
 
 
 def _refresh_newsletters() -> None:
@@ -683,6 +784,7 @@ def _refresh_newsletters() -> None:
         return
     if items:
         _newsletter_cache.update(items=items, content=bodies, ts=now)
+        threading.Thread(target=_warm_digest, args=(items[0]["url"],), daemon=True).start()
 
 
 @app.get("/v1/newsletters")
@@ -700,7 +802,17 @@ async def get_newsletter_content(url: str):
     body = _newsletter_cache["content"].get(url)
     if body is None:
         raise HTTPException(status_code=404, detail="Unknown newsletter.")
-    return {"url": url, "markdown": body, "credit": "© Bitcoin Optech, released under the MIT license."}
+    meta = next((i for i in _newsletter_cache["items"] if i["url"] == url), {})
+    return {
+        "url": url,
+        "markdown": body,
+        "sections": _newsletter_cache["sections"].get(url, []),
+        "reading_minutes": meta.get("reading_minutes"),
+        "counts": meta.get("counts", {}),
+        # Ready only when the background digest has been written; the app asks for it otherwise.
+        "digest": _summary_cache.get(f"simple|{url}"),
+        "credit": "© Bitcoin Optech, released under the MIT license.",
+    }
 
 
 # ================= MARKET =================

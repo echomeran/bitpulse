@@ -37,6 +37,17 @@ CRYPTO_TOPIC = re.compile(
 REGULATOR_MAX_ITEMS = 5
 REGULATOR_MAX_AGE = 30 * 24 * 3600
 ARTICLE_HOSTS = ("coindesk.com", "cointelegraph.com", "sec.gov", "cftc.gov", "bitcoinops.org")
+# The SEC's fair-access policy asks automated clients to name themselves and give a contact
+# address in the User-Agent; without it sec.gov answers 403.
+CONTACT_EMAIL = "bitpulseapp.support@gmail.com"
+SEC_USER_AGENT = f"BitPulse/1.1 {CONTACT_EMAIL}"
+
+
+def request_headers(url: str) -> dict:
+    """Per-site headers for outgoing requests (only sec.gov needs any)."""
+    return {"User-Agent": SEC_USER_AGENT} if _host_in(url, ("sec.gov",)) else {}
+
+
 # Sources whose text the app may show in full. Everything else gets a short summary and a link.
 FULL_TEXT_HOSTS = ("sec.gov", "cftc.gov", "bitcoinops.org")
 MAX_ARTICLES = 50
@@ -116,7 +127,7 @@ def parse_rss(content: bytes, fallback_publisher: str) -> list[dict]:
 
 def fetch_rss_feed(session: requests.Session, url: str, publisher: str) -> list[dict]:
     try:
-        resp = session.get(url, timeout=7)
+        resp = session.get(url, timeout=7, headers=request_headers(url))
         resp.raise_for_status()
         return parse_rss(resp.content, publisher)
     except (requests.RequestException, ET.ParseError) as exc:

@@ -8,6 +8,8 @@ GREETING = (
 )
 
 
+PRIVACY_POLICY_URL = "https://echomeran.github.io/bitpulse/privacy.html"
+
 # Shown above the chat. The answers are AI-generated and educational, so say so plainly.
 DISCLAIMER = (
     "For education only, not financial advice. Answers are AI-generated and can be wrong; "
@@ -23,6 +25,13 @@ def ai_view_component(page: ft.Page):
                     [
                         ft.Text("BitPulse AI Assistant", size=24, weight="bold"),
                         ft.Text(DISCLAIMER, size=11, color=ft.Colors.GREY_500),
+                        ft.TextButton(
+                            "Privacy policy",
+                            on_click=lambda _: page.launch_url(PRIVACY_POLICY_URL),
+                            style=ft.ButtonStyle(
+                                color=ft.Colors.BLUE_300, padding=ft.padding.all(0)
+                            ),
+                        ),
                     ],
                     spacing=2,
                 ),

@@ -243,7 +243,7 @@ OPTECH_SAMPLE = b"""<?xml version="1.0" encoding="utf-8"?>
     <published>2026-11-20T00:00:00+00:00</published>
     <content type="html">&lt;p&gt;This week's newsletter
 summarizes a &lt;a href="/en/topics/pooled-mining/"&gt;mining&lt;/a&gt; analysis.&lt;/p&gt;
-&lt;h2 id="news"&gt;News&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;&lt;a href="#x"&gt;&#9679;&lt;/a&gt; &lt;strong&gt;Topic:&lt;/strong&gt; text&lt;/li&gt;&lt;/ul&gt;</content>
+&lt;h2 id="news"&gt;News&lt;/h2&gt;&lt;ul&gt;&lt;li class="anchor-list"&gt;&lt;a href="#x"&gt;&#9679;&lt;/a&gt; &lt;strong&gt;Topic:&lt;/strong&gt; text&lt;/li&gt;&lt;/ul&gt;</content>
   </entry>
   <entry>
     <title type="html">Bitcoin Optech Newsletter #431 Recap Podcast</title>
@@ -287,3 +287,30 @@ def test_summary_keeps_only_the_bullet_lines():
     raw = "Here's a quick rundown:\n\n- First fact.\n* Second fact.\n\nHope this helps!"
     assert server.bullet_lines_only(raw) == "- First fact.\n- Second fact."
     assert server.bullet_lines_only("Just one sentence.") == "Just one sentence."
+
+
+def test_newsletter_splits_into_titled_cards():
+    items, _ = server.parse_optech_feed(OPTECH_SAMPLE)
+    sections = server._newsletter_cache["sections"][items[0]["url"]]
+    assert [s["title"] for s in sections] == ["News"]
+    card = sections[0]["items"][0]
+    assert card["title"] == "Topic" and card["preview"] == "text"
+    assert items[0]["counts"] == {"News": 1} and items[0]["reading_minutes"] >= 1
+
+
+def test_release_items_take_their_title_from_the_project_link():
+    html = (
+        '<h2>Releases</h2><ul><li class="anchor-list"><p><a href="#x">●</a> '
+        '<a href="https://github.com/bitcoin/bitcoin/pull/1">Bitcoin Core #1</a> fixes a leak. More text.</p></li></ul>'
+    )
+    card = server.newsletter_sections(html)[0]["items"][0]
+    assert card["title"] == "Bitcoin Core #1" and card["preview"] == "Fixes a leak."
+
+
+def test_article_text_prefers_the_marked_story_area():
+    banner = "<p>" + "An official website of the United States government. " * 2 + "</p>"
+    story = "<p>" + "The Commission today announced charges against a crypto platform. " * 6 + "</p>"
+    page = f"<html><body>{banner}<main>{story}</main></body></html>".encode()
+    assert "official website" not in server.extract_article_text(page)
+    teaser = f"<html><body><article><p>Short teaser text that is long enough to count.</p></article>{story}</body></html>"
+    assert "announced charges" in server.extract_article_text(teaser.encode())
