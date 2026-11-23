@@ -11,7 +11,8 @@ from services.net import session
 logger = logging.getLogger("bitpulse.news")
 
 NEWS_CACHE_FILE = "news_cache.json"
-NEWS_CACHE_MAX_AGE = 6 * 60 * 60
+# Saved news is shown at launch while fresh news loads, so a week-old copy still beats a blank list.
+NEWS_CACHE_MAX_AGE = 7 * 24 * 60 * 60
 DEFAULT_IMAGE = "icon_clean.png"
 # Short, because a sleeping free-tier backend answers in ~30s and fetching the
 # feeds directly is faster than waiting for it to wake up.

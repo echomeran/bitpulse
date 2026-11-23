@@ -316,6 +316,21 @@ def market_view_component(page: ft.Page):
         selected_period["value"] = period
 
         is_first_load = chart_container.content != persistent_chart
+        # Show the chart saved on the phone right away; the backend can take a few seconds to
+        # wake up, and an empty spinner on every launch feels broken.
+        saved = market_service.load_cached_market(period)
+        showed_saved = False
+        if saved and saved.get("prices"):
+            try:
+                _apply_market_data(saved, is_first_load)
+                is_first_load = False
+                showed_saved = True
+                current_time_label.value = "Saved data · updating…"
+                current_time_label.color = ft.Colors.GREY_600
+                page.update()
+            except Exception:
+                logger.exception("Saved chart render failed")
+
         if is_first_load:
             chart_container.content = ft.Container(
                 alignment=ft.alignment.center,
@@ -325,7 +340,7 @@ def market_view_component(page: ft.Page):
             )
             if chart_container.page:
                 chart_container.update()
-        else:
+        elif not showed_saved:
             current_time_label.value = "Updating..."
             current_time_label.color = ft.Colors.GREY_600
             if current_time_label.page:
