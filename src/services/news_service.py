@@ -130,7 +130,8 @@ def load_cached_newsletters() -> list[dict]:
     return data if isinstance(data, list) else []
 
 
-def fetch_newsletter_markdown(api_url: str, url: str) -> str | None:
+def fetch_newsletter(api_url: str, url: str) -> dict | None:
+    """The issue as the server prepared it: markdown, sections of cards, counts and digest."""
     if not api_url:
         return None
     try:
@@ -138,10 +139,16 @@ def fetch_newsletter_markdown(api_url: str, url: str) -> str | None:
             f"{api_url}/v1/newsletters/content", params={"url": url}, timeout=NEWSLETTER_TIMEOUT
         )
         resp.raise_for_status()
-        return resp.json().get("markdown")
+        data = resp.json()
+        return data if isinstance(data, dict) and data.get("markdown") else None
     except (requests.RequestException, ValueError, AttributeError) as exc:
         logger.warning("Newsletter content failed: %s", exc)
         return None
+
+
+def fetch_newsletter_markdown(api_url: str, url: str) -> str | None:
+    data = fetch_newsletter(api_url, url)
+    return data.get("markdown") if data else None
 
 
 def last_read_newsletter() -> int:

@@ -238,3 +238,17 @@ def test_newsletters_fall_back_to_the_saved_list(tmp_path, monkeypatch):
 
     monkeypatch.setattr(news_service.session, "get", fail)
     assert news_service.fetch_newsletters("https://api") == saved
+
+
+def test_newsletter_cards_get_icons_from_section_and_topic():
+    import flet as ft
+
+    from views.newsletter_view import item_icon, section_style
+
+    assert section_style("Releases and release candidates")[2] == "releases"
+    assert section_style("Something new")[0] == ft.Icons.ARTICLE_OUTLINED
+    code_icon = section_style("Notable code and documentation changes")[0]
+    assert item_icon({"title": "Bitcoin Core #1", "preview": "Fixes a privacy leak over Tor."}, code_icon) == ft.Icons.VISIBILITY_OFF_OUTLINED
+    assert item_icon({"title": "Disclosure of a DoS vulnerability in Eclair"}, code_icon) == ft.Icons.SHIELD_OUTLINED
+    assert item_icon({"title": "Mempool package relay"}, code_icon) == ft.Icons.SPEED  # not mining
+    assert item_icon({"title": "Docs tidy-up"}, code_icon) == code_icon
