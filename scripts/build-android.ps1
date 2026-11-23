@@ -1,5 +1,5 @@
 param(
-    [string]$BundleId = "com.bitpulse.app",
+    [string]$BundleId = "io.github.echomeran.bitpulse",
     [string]$Version = "1.0.0",
     [int]$BuildNumber = 1,
     [string]$KeystorePath = ""
@@ -19,7 +19,7 @@ $arguments = @(
     "--output", $outputPath,
     "--project", "bitpulse",
     "--product", "BitPulse",
-    "--org", "com.bitpulse",
+    "--org", "io.github.echomeran",
     "--bundle-id", $BundleId,
     "--description", "Bitcoin news, market data and AI education.",
     "--build-version", $Version,

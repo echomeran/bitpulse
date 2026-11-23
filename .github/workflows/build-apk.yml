@@ -91,8 +91,8 @@ jobs:
             --output build/apk \
             --project bitpulse \
             --product BitPulse \
-            --org com.bitpulse \
-            --bundle-id com.bitpulse.app \
+            --org io.github.echomeran \
+            --bundle-id io.github.echomeran.bitpulse \
             --description "Bitcoin news, market data and AI education." \
             --build-version "${{ steps.version.outputs.version }}" \
             --build-number "${{ steps.version.outputs.build_number }}" \
