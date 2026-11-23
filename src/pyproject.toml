@@ -1,0 +1,7 @@
+# Read by `flet build` (it looks for pyproject.toml next to main.py).
+# Dependencies still come from requirements.txt: this file has no [project] table on purpose.
+
+[tool.flet.android]
+# Google Play requires new apps and updates to target Android 16 (API 36) since 2026-08-31.
+# Flet 0.28.3 pins Flutter 3.29, whose default target is API 35.
+target_sdk_version = 36

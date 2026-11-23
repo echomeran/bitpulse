@@ -1,4 +1,4 @@
-name: Build BitPulse Android APK
+name: Build BitPulse Android APK and AAB
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build-apk:
-    name: Build Android APK
+    name: Build Android APK and AAB
     runs-on: ubuntu-latest
 
     steps:
@@ -76,7 +76,9 @@ jobs:
             echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; the APK will be signed with a debug key."
           fi
 
-      - name: Build Android APK
+      # The APK is for direct installs (GitHub Release); the AAB is what Google Play accepts.
+      # Both are signed with the same key, which Play treats as the upload key.
+      - name: Build Android APK and App Bundle
         env:
           KEYSTORE: ${{ steps.signing.outputs.keystore }}
           FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -87,36 +89,56 @@ jobs:
           if [ -n "$KEYSTORE" ]; then
             SIGNING_ARGS=(--android-signing-key-store "$KEYSTORE" --android-signing-key-alias "${KEY_ALIAS:-upload}")
           fi
-          flet build apk src \
-            --output build/apk \
-            --project bitpulse \
-            --product BitPulse \
-            --org io.github.echomeran \
-            --bundle-id io.github.echomeran.bitpulse \
-            --description "Bitcoin news, market data and AI education." \
-            --build-version "${{ steps.version.outputs.version }}" \
-            --build-number "${{ steps.version.outputs.build_number }}" \
-            --arch arm64-v8a \
-            --android-permissions android.permission.INTERNET=True android.permission.ACCESS_NETWORK_STATE=True \
-            "${SIGNING_ARGS[@]}"
+          for TARGET in apk aab; do
+            flet build "$TARGET" src \
+              --output "build/$TARGET" \
+              --project bitpulse \
+              --product BitPulse \
+              --org io.github.echomeran \
+              --bundle-id io.github.echomeran.bitpulse \
+              --description "Bitcoin news, market data and AI education." \
+              --build-version "${{ steps.version.outputs.version }}" \
+              --build-number "${{ steps.version.outputs.build_number }}" \
+              --arch arm64-v8a \
+              --android-permissions android.permission.INTERNET=True android.permission.ACCESS_NETWORK_STATE=True \
+              "${SIGNING_ARGS[@]}"
+          done
 
-      - name: Collect APK
+      - name: Collect APK and AAB
         run: |
           mkdir -p dist
           APK=$(find build/apk -name "*.apk" | head -n 1)
+          AAB=$(find build/aab -name "*.aab" | head -n 1)
           test -n "$APK"
+          test -n "$AAB"
           cp "$APK" "dist/BitPulse-v${{ steps.version.outputs.version }}.apk"
+          cp "$AAB" "dist/BitPulse-v${{ steps.version.outputs.version }}.aab"
           ls -la dist/
 
-      - name: Upload APK artifact
+      - name: Check target SDK
+        run: |
+          AAPT2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)
+          BADGING=$("$AAPT2" dump badging dist/*.apk)
+          echo "$BADGING" | grep -E "^(package|sdkVersion|targetSdkVersion)"
+          TARGET_SDK=$(echo "$BADGING" | sed -n "s/^targetSdkVersion:'\([0-9]*\)'.*/\1/p")
+          if [ "${TARGET_SDK:-0}" -lt 36 ]; then
+            echo "::error::targetSdkVersion is ${TARGET_SDK:-unknown}; Google Play requires 36. See src/pyproject.toml."
+            exit 1
+          fi
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BitPulse-v${{ steps.version.outputs.version }}-apk
-          path: dist/*.apk
+          name: BitPulse-v${{ steps.version.outputs.version }}-android
+          path: |
+            dist/*.apk
+            dist/*.aab
           if-no-files-found: error
 
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.apk
+          files: |
+            dist/*.apk
+            dist/*.aab
