@@ -68,7 +68,7 @@ def main(page: ft.Page):
         bgcolor="#1A1A1A",
         destinations=[
             ft.NavigationBarDestination(icon=ft.Icons.NEWSPAPER, label="News"),
-            ft.NavigationBarDestination(icon=ft.Icons.SMART_TOY, label="AI Advisor"),
+            ft.NavigationBarDestination(icon=ft.Icons.SMART_TOY, label="AI Assistant"),
             ft.NavigationBarDestination(icon=ft.Icons.INSIGHTS, label="Market"),
         ],
     )

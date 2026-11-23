@@ -202,3 +202,17 @@ def test_stream_does_not_retry_client_errors(monkeypatch):
     left = _queue_responses(monkeypatch, _FakeStream(400), _FakeStream(pieces=["never"]))
     assert ai_service.stream_chat_message("u", "hi", []) == (None, ai_service.ERR_UNAVAILABLE)
     assert len(left) == 1
+
+
+def test_report_reply_posts_the_exchange(monkeypatch):
+    sent = {}
+
+    def post(url, json, timeout):
+        sent.update(url=url, body=json)
+        return type("R", (), {"status_code": 200})()
+
+    monkeypatch.setattr(ai_service.session, "post", post)
+    assert ai_service.report_reply("https://api", "q" * 900, "bad answer", "https://coindesk.com/a")
+    assert sent["url"] == "https://api/v1/report"
+    assert len(sent["body"]["question"]) == 600 and sent["body"]["answer"] == "bad answer"
+    assert ai_service.report_reply("", "q", "a") is False

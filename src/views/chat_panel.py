@@ -7,7 +7,7 @@ import flet as ft
 
 import services.market_service as market_service
 import services.news_service as news_service
-from services.ai_service import ERR_UNREACHABLE, get_api_url, stream_chat_message
+from services.ai_service import ERR_UNREACHABLE, get_api_url, report_reply, stream_chat_message
 
 logger = logging.getLogger("bitpulse.chat")
 
@@ -77,6 +77,32 @@ def create_chat_bubble(text, is_user):
     spacer = ft.Container(expand=1)
     row = ft.Row(controls=[spacer, column] if is_user else [column, spacer])
     return row, label
+
+
+def add_report_action(page: ft.Page, row: ft.Row, question: str, answer: str, article_url: str):
+    """Put a small "Report" link under an AI reply. Google Play requires a way to flag AI output."""
+    column = row.controls[0]
+    link = ft.TextButton(
+        "Report",
+        icon=ft.Icons.FLAG_OUTLINED,
+        style=ft.ButtonStyle(color=ft.Colors.GREY_500, padding=ft.padding.symmetric(horizontal=6)),
+        tooltip="Report this answer as wrong, harmful or offensive",
+    )
+
+    def send():
+        sent = report_reply(get_api_url(), question, answer, article_url)
+        link.text = "Reported. Thank you." if sent else "Could not send report. Try again."
+        link.icon = ft.Icons.FLAG if sent else ft.Icons.FLAG_OUTLINED
+        link.disabled = sent
+        page.update()
+
+    async def on_click(_):
+        link.disabled = True
+        page.update()
+        await asyncio.to_thread(send)
+
+    link.on_click = on_click
+    column.controls.append(link)
 
 
 def typing_indicator():
@@ -175,6 +201,7 @@ def chat_panel(
                 reply_label.value = reply
                 if reply_row not in chat_list.controls:
                     chat_list.controls.append(reply_row)
+                add_report_action(page, reply_row, user_text, reply, article_url)
                 conversation_history.extend(
                     [{"role": "user", "text": user_text}, {"role": "assistant", "text": reply}]
                 )

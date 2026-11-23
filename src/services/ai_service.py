@@ -189,3 +189,16 @@ def stream_chat_message(
     if reply:
         return reply, None
     return None, error if failed else ERR_EMPTY
+
+
+def report_reply(api_url: str, question: str, answer: str, article_url: str = "") -> bool:
+    """Send a user's report of an AI reply to the backend; return True when it was recorded."""
+    if not api_url:
+        return False
+    payload = {"question": question[:600], "answer": answer[:8000], "article_url": article_url[:2000]}
+    try:
+        response = session.post(f"{api_url}/v1/report", json=payload, timeout=15)
+    except requests.RequestException as exc:
+        logger.warning("Report failed: %s", exc)
+        return False
+    return response.status_code < 400

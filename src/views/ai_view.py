@@ -8,18 +8,21 @@ GREETING = (
 )
 
 
+# Shown above the chat. The answers are AI-generated and educational, so say so plainly.
+DISCLAIMER = (
+    "For education only, not financial advice. Answers are AI-generated and can be wrong; "
+    "check important facts and do your own research before any decision."
+)
+
+
 def ai_view_component(page: ft.Page):
     return ft.Column(
         [
             ft.Container(
                 content=ft.Column(
                     [
-                        ft.Text("BitPulse AI Advisor", size=24, weight="bold"),
-                        ft.Text(
-                            "Market education only — not financial advice.",
-                            size=11,
-                            color=ft.Colors.GREY_500,
-                        ),
+                        ft.Text("BitPulse AI Assistant", size=24, weight="bold"),
+                        ft.Text(DISCLAIMER, size=11, color=ft.Colors.GREY_500),
                     ],
                     spacing=2,
                 ),

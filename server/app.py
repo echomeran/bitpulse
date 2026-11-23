@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import time
@@ -43,6 +44,7 @@ TRUNCATED_NOTE = "\n\n*(The answer was cut short. Ask me to continue.)*"
 STREAM_ERROR_MARKER = "\u0000error"
 CHAT_LIMIT_PER_HOUR = int(os.getenv("RATE_LIMIT_PER_HOUR", "30"))
 ARTICLE_LIMIT_PER_HOUR = int(os.getenv("ARTICLE_RATE_LIMIT_PER_HOUR", "120"))
+REPORT_LIMIT_PER_HOUR = int(os.getenv("REPORT_RATE_LIMIT_PER_HOUR", "20"))
 # Number of reverse proxies in front of the app (Render/Cloud Run = 1). Set to 0 when exposed directly,
 # otherwise clients could spoof X-Forwarded-For to dodge the rate limit.
 TRUSTED_PROXY_HOPS = int(os.getenv("TRUSTED_PROXY_HOPS", "1"))
@@ -114,6 +116,7 @@ class RateLimiter:
 
 chat_limiter = RateLimiter(CHAT_LIMIT_PER_HOUR)
 article_limiter = RateLimiter(ARTICLE_LIMIT_PER_HOUR)
+report_limiter = RateLimiter(REPORT_LIMIT_PER_HOUR)
 
 
 def client_ip(request: Request) -> str:
@@ -371,6 +374,25 @@ async def chat_stream(payload: ChatRequest, request: Request):
             task.cancel()
 
     return StreamingResponse(body(), media_type="text/plain; charset=utf-8")
+
+
+class ReportRequest(BaseModel):
+    question: str = Field(default="", max_length=600)
+    answer: str = Field(min_length=1, max_length=8000)
+    article_url: str = Field(default="", max_length=2000)
+
+
+@app.post("/v1/report")
+async def report_reply(payload: ReportRequest, request: Request):
+    """Record a user's report of an AI reply (Google Play requires in-app reporting of AI output).
+
+    Reports go to the service log as one JSON line tagged AI_REPLY_REPORT, so they can be
+    reviewed with `gcloud logging read 'textPayload:AI_REPLY_REPORT'`. The report line itself
+    holds no IP or device data (Cloud Run's own request log still records the caller's IP).
+    """
+    _enforce(report_limiter, request)
+    logger.warning("AI_REPLY_REPORT %s", json.dumps(payload.model_dump(), ensure_ascii=False))
+    return {"status": "received"}
 
 
 # ================= NEWS =================

@@ -216,3 +216,20 @@ def test_client_ip_uses_proxy_appended_address(monkeypatch):
 def test_client_ip_ignores_header_without_proxy(monkeypatch):
     monkeypatch.setattr(server, "TRUSTED_PROXY_HOPS", 0)
     assert server.client_ip(FakeRequest("6.6.6.6")) == "10.0.0.1"
+
+
+def test_report_records_the_reply_in_the_log(client, caplog):
+    server.report_limiter._hits.clear()
+    body = {"question": "is BTC safe?", "answer": "Yes, guaranteed.", "article_url": ""}
+    with caplog.at_level("WARNING", logger="bitpulse-api"):
+        response = client.post("/v1/report", json=body)
+    assert response.status_code == 200
+    line = next(r.getMessage() for r in caplog.records if "AI_REPLY_REPORT" in r.getMessage())
+    assert '"answer": "Yes, guaranteed."' in line
+
+
+def test_report_rejects_an_empty_answer_and_floods(client, monkeypatch):
+    server.report_limiter._hits.clear()
+    assert client.post("/v1/report", json={"answer": ""}).status_code == 422
+    monkeypatch.setattr(server.report_limiter, "allow", lambda key, now=None: False)
+    assert client.post("/v1/report", json={"answer": "x"}).status_code == 429
