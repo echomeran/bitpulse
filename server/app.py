@@ -515,6 +515,12 @@ def _summarize(client: genai.Client, text: str, instruction: str = SUMMARY_INSTR
     return ""
 
 
+def bullet_lines_only(text: str) -> str:
+    """Drop chatty lead-ins ("Here's a quick rundown:") the model sometimes adds before the bullets."""
+    bullets = [line.strip() for line in text.splitlines() if line.strip().startswith(("- ", "* ", "• "))]
+    return "\n".join("- " + line[2:].strip() for line in bullets) if bullets else text.strip()
+
+
 def _summaries_blocked(url: str) -> bool:
     """Hosts listed in SUMMARY_BLOCKED_HOSTS get no AI summary: a switch for publisher requests."""
     blocked = tuple(h.strip().lower() for h in os.getenv("SUMMARY_BLOCKED_HOSTS", "").split(",") if h.strip())
@@ -564,6 +570,7 @@ async def get_news_summary(url: str, request: Request, style: str = Query("brief
             raise HTTPException(status_code=429, detail="The AI service is busy.") from None
         raise HTTPException(status_code=503, detail="The AI service is unavailable.") from None
 
+    summary = bullet_lines_only(summary)
     if not summary:
         raise HTTPException(status_code=503, detail="The AI service returned an empty response.")
 

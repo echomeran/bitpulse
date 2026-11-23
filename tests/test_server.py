@@ -281,3 +281,9 @@ def test_summaries_can_be_switched_off_per_host(client, monkeypatch):
     blocked = client.get("/v1/news/summary", params={"url": "https://cointelegraph.com/news/x"})
     assert blocked.status_code == 403
     assert client.get("/v1/news/summary", params={"url": "https://cointelegraph.com/x", "style": "long"}).status_code == 422
+
+
+def test_summary_keeps_only_the_bullet_lines():
+    raw = "Here's a quick rundown:\n\n- First fact.\n* Second fact.\n\nHope this helps!"
+    assert server.bullet_lines_only(raw) == "- First fact.\n- Second fact."
+    assert server.bullet_lines_only("Just one sentence.") == "Just one sentence."
