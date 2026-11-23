@@ -9,6 +9,7 @@ from views.ai_view import ai_view_component
 from views.market_view import market_view_component
 from views.news_detail_view import news_detail_view_component
 from views.news_view import news_view_component
+from views.newsletter_view import newsletter_view_component
 
 
 def main(page: ft.Page):
@@ -25,16 +26,22 @@ def main(page: ft.Page):
 
     main_container = ft.Container(expand=True)
     selected_news_item = {"value": None}
+    selected_newsletter = {"value": None}
 
     def go_back_to_list(e=None):
         selected_news_item["value"] = None
+        selected_newsletter["value"] = None
         page.go("/")
 
     def open_news_detail(item):
         selected_news_item["value"] = item
         page.go("/news-detail")
 
-    news_layout, update_news = news_view_component(page, open_news_detail)
+    def open_newsletter(item):
+        selected_newsletter["value"] = item
+        page.go("/newsletter")
+
+    news_layout, update_news = news_view_component(page, open_news_detail, open_newsletter)
     market_layout, update_market = market_view_component(page)
     ai_layout = ai_view_component(page)
 
@@ -143,6 +150,24 @@ def main(page: ft.Page):
                                 minimum_padding=ft.padding.only(top=0),
                                 content=news_detail_view_component(
                                     selected_news_item["value"], go_back_to_list, page
+                                ),
+                            )
+                        ],
+                    )
+                )
+        elif page.route == "/newsletter" and selected_newsletter["value"]:
+            if page.views[-1].route != "/newsletter":
+                page.views.append(
+                    ft.View(
+                        route="/newsletter",
+                        bgcolor="#121212",
+                        padding=0,
+                        controls=[
+                            ft.SafeArea(
+                                expand=True,
+                                minimum_padding=ft.padding.only(top=0),
+                                content=newsletter_view_component(
+                                    selected_newsletter["value"], go_back_to_list, page
                                 ),
                             )
                         ],

@@ -21,7 +21,24 @@ NEWS_FEEDS = (
     ("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
     ("Cointelegraph", "https://cointelegraph.com/rss"),
 )
-ARTICLE_HOSTS = ("coindesk.com", "cointelegraph.com")
+# US regulators publish everything, so only their crypto items are kept. Works of the US federal
+# government are not under copyright (17 U.S.C. 105), so their full text may be shown.
+REGULATOR_FEEDS = (
+    ("SEC", "https://www.sec.gov/news/pressreleases.rss"),
+    ("CFTC", "https://www.cftc.gov/RSS/RSSGP/rssgp.xml"),
+)
+CRYPTO_TOPIC = re.compile(
+    r"\b(crypto\w*|digital[- ]asset\w*|bitcoin|blockchain|stablecoin\w*|tokeni[sz]\w*|"
+    r"ether(eum)?|defi|virtual currenc\w*|web3)\b",
+    re.IGNORECASE,
+)
+# Regulators post a crypto item every few days, so the 50 newest headlines would always push
+# them out. They get their own slots instead.
+REGULATOR_MAX_ITEMS = 5
+REGULATOR_MAX_AGE = 30 * 24 * 3600
+ARTICLE_HOSTS = ("coindesk.com", "cointelegraph.com", "sec.gov", "cftc.gov", "bitcoinops.org")
+# Sources whose text the app may show in full. Everything else gets a short summary and a link.
+FULL_TEXT_HOSTS = ("sec.gov", "cftc.gov", "bitcoinops.org")
 MAX_ARTICLES = 50
 
 # "window" trims to a trailing span in seconds. Yahoo's "1d" range means "since 00:00 UTC", so
@@ -119,11 +136,43 @@ def dedupe_articles(articles: list[dict]) -> list[dict]:
     return unique[:MAX_ARTICLES]
 
 
+def is_crypto_item(article: dict) -> bool:
+    return bool(CRYPTO_TOPIC.search(f"{article.get('title', '')} {article.get('description', '')}"))
+
+
 def fetch_all_news(session: requests.Session) -> list[dict]:
     """Fetch every feed at once so one slow or blocked publisher does not delay the rest."""
-    with ThreadPoolExecutor(max_workers=len(NEWS_FEEDS)) as pool:
-        feeds = pool.map(lambda f: fetch_rss_feed(session, f[1], f[0]), NEWS_FEEDS)
-    return dedupe_articles([article for feed in feeds for article in feed])
+    feeds = [(p, u, False) for p, u in NEWS_FEEDS] + [(p, u, True) for p, u in REGULATOR_FEEDS]
+    with ThreadPoolExecutor(max_workers=len(feeds)) as pool:
+        results = pool.map(lambda f: (f[2], fetch_rss_feed(session, f[1], f[0])), feeds)
+    news, regulators = [], []
+    for crypto_only, items in results:
+        if crypto_only:
+            regulators.extend(a for a in items if is_crypto_item(a))
+        else:
+            news.extend(items)
+    return merge_regulator_items(dedupe_articles(news), regulators)
+
+
+def merge_regulator_items(news: list[dict], regulators: list[dict], now: float | None = None) -> list[dict]:
+    """Add the newest recent regulator items on top of the capped headline list, newest first."""
+    now = now if now is not None else datetime.now(timezone.utc).timestamp()
+    recent = [a for a in regulators if (a.get("published_ts") or 0) >= now - REGULATOR_MAX_AGE]
+    recent = dedupe_articles(recent)[:REGULATOR_MAX_ITEMS]
+    links = {a.get("link") for a in news}
+    merged = news + [a for a in recent if a.get("link") not in links]
+    merged.sort(key=lambda a: a.get("published_ts") or 0, reverse=True)
+    return merged
+
+
+def _host_in(url: str, hosts: tuple[str, ...]) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in hosts)
+
+
+def allows_full_text(url: str) -> bool:
+    """True for sources whose licence lets the app show the whole article (see FULL_TEXT_HOSTS)."""
+    return is_allowed_article_url(url) and _host_in(url, FULL_TEXT_HOSTS)
 
 
 def is_allowed_article_url(url: str) -> bool:

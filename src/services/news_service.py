@@ -33,16 +33,22 @@ def fetch_full_article(api_url: str, article_url: str) -> str | None:
         return None
 
 
-def fetch_article_summary(api_url: str, article_url: str) -> tuple[str | None, str | None]:
-    """Return (summary, None) or (None, user-facing error)."""
+def fetch_article_summary(
+    api_url: str, article_url: str, style: str = "brief"
+) -> tuple[str | None, str | None]:
+    """Return (summary, None) or (None, user-facing error). *style* is "brief" or "simple"."""
     if not api_url or not sources.is_allowed_article_url(article_url):
         return None, "Summaries are not available for this article."
     try:
         resp = session.get(
-            f"{api_url}/v1/news/summary", params={"url": article_url}, timeout=(5, 40)
+            f"{api_url}/v1/news/summary",
+            params={"url": article_url, "style": style},
+            timeout=(5, 40),
         )
         if resp.status_code == 429:
             return None, "The AI service is busy. Please try again in a minute."
+        if resp.status_code in (403, 502):
+            return None, "A summary is not available for this article."
         if resp.status_code >= 400:
             logger.warning("Summary request returned HTTP %s", resp.status_code)
             return None, "Could not summarize this article."
@@ -95,3 +101,57 @@ def load_cached_news() -> list[dict]:
 
 def save_news_cache(articles: list[dict]) -> None:
     save_json(NEWS_CACHE_FILE, articles)
+
+
+# ---------------- Bitcoin Optech newsletter ----------------
+
+NEWSLETTER_CACHE_FILE = "newsletters.json"
+NEWSLETTER_STATE_FILE = "newsletter_state.json"
+NEWSLETTER_TIMEOUT = (3, 25)  # the server may need to fetch Optech's feed first
+
+
+def fetch_newsletters(api_url: str) -> list[dict]:
+    """Newest-first list of Optech newsletters, falling back to the copy saved on the phone."""
+    if api_url:
+        try:
+            resp = session.get(f"{api_url}/v1/newsletters", timeout=NEWSLETTER_TIMEOUT)
+            resp.raise_for_status()
+            items = resp.json().get("items") or []
+            if items:
+                save_json(NEWSLETTER_CACHE_FILE, items)
+                return items
+        except (requests.RequestException, ValueError, AttributeError) as exc:
+            logger.warning("Newsletter list failed: %s", exc)
+    return load_cached_newsletters()
+
+
+def load_cached_newsletters() -> list[dict]:
+    data, _ = load_json(NEWSLETTER_CACHE_FILE)
+    return data if isinstance(data, list) else []
+
+
+def fetch_newsletter_markdown(api_url: str, url: str) -> str | None:
+    if not api_url:
+        return None
+    try:
+        resp = session.get(
+            f"{api_url}/v1/newsletters/content", params={"url": url}, timeout=NEWSLETTER_TIMEOUT
+        )
+        resp.raise_for_status()
+        return resp.json().get("markdown")
+    except (requests.RequestException, ValueError, AttributeError) as exc:
+        logger.warning("Newsletter content failed: %s", exc)
+        return None
+
+
+def last_read_newsletter() -> int:
+    data, _ = load_json(NEWSLETTER_STATE_FILE)
+    try:
+        return int((data or {}).get("last_read", 0))
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
+def mark_newsletter_read(number: int) -> None:
+    if number > last_read_newsletter():
+        save_json(NEWSLETTER_STATE_FILE, {"last_read": number})

@@ -120,3 +120,29 @@ def test_short_periods_keep_a_trailing_window_not_the_utc_day():
     assert trim_to_window(points, None) == points
     assert trim_to_window([], 3600) == []
     assert all(PERIOD_CONFIG[p]["range"] != "1d" for p in ("1H", "1D"))
+
+
+def test_regulator_items_are_kept_only_when_about_crypto():
+    from sources import allows_full_text, is_crypto_item
+
+    assert is_crypto_item({"title": "SEC Charges Fake Crypto Asset Trading Platforms"})
+    assert is_crypto_item({"title": "Roundtable", "description": "tokenization of securities"})
+    assert not is_crypto_item({"title": "SEC Proposes Executive Compensation Reforms"})
+    assert not is_crypto_item({"title": "Ethernet outage at exchange"})
+    assert allows_full_text("https://www.cftc.gov/PressRoom/PressReleases/9327-26")
+    assert allows_full_text("https://bitcoinops.org/en/newsletters/2026/11/20/")
+    assert not allows_full_text("https://cointelegraph.com/news/x")
+    assert not allows_full_text("https://evil.example/sec.gov")
+
+
+def test_recent_regulator_items_survive_the_headline_cap():
+    from sources import REGULATOR_MAX_ITEMS, merge_regulator_items
+
+    now = 1_000_000_000
+    news = [{"link": f"n{i}", "published_ts": now - i} for i in range(50)]
+    old = {"link": "sec-old", "published_ts": now - 40 * 86400}
+    regs = [{"link": f"r{i}", "published_ts": now - 4 * 86400 - i} for i in range(8)] + [old]
+    merged = merge_regulator_items(news, regs, now=now)
+    kept = [a["link"] for a in merged if a["link"].startswith("r")]
+    assert len(kept) == REGULATOR_MAX_ITEMS and "sec-old" not in [a["link"] for a in merged]
+    assert merged[0]["link"] == "n0"  # still newest first

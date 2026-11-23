@@ -216,3 +216,25 @@ def test_report_reply_posts_the_exchange(monkeypatch):
     assert sent["url"] == "https://api/v1/report"
     assert len(sent["body"]["question"]) == 600 and sent["body"]["answer"] == "bad answer"
     assert ai_service.report_reply("", "q", "a") is False
+
+
+def test_newsletter_read_state_only_moves_forward(tmp_path, monkeypatch):
+    monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(tmp_path))
+    assert news_service.last_read_newsletter() == 0
+    news_service.mark_newsletter_read(432)
+    news_service.mark_newsletter_read(430)  # opening an older issue must not mark 431+ unread
+    assert news_service.last_read_newsletter() == 432
+
+
+def test_newsletters_fall_back_to_the_saved_list(tmp_path, monkeypatch):
+    import requests
+
+    monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(tmp_path))
+    saved = [{"number": 431, "title": "Bitcoin Optech Newsletter #431"}]
+    news_service.save_json(news_service.NEWSLETTER_CACHE_FILE, saved)
+
+    def fail(*args, **kwargs):
+        raise requests.ConnectionError()
+
+    monkeypatch.setattr(news_service.session, "get", fail)
+    assert news_service.fetch_newsletters("https://api") == saved

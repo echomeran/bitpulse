@@ -233,3 +233,51 @@ def test_report_rejects_an_empty_answer_and_floods(client, monkeypatch):
     assert client.post("/v1/report", json={"answer": ""}).status_code == 422
     monkeypatch.setattr(server.report_limiter, "allow", lambda key, now=None: False)
     assert client.post("/v1/report", json={"answer": "x"}).status_code == 429
+
+
+OPTECH_SAMPLE = b"""<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <title type="html">Bitcoin Optech Newsletter #432</title>
+    <link href="https://bitcoinops.org/en/newsletters/2026/11/20/" rel="alternate"/>
+    <published>2026-11-20T00:00:00+00:00</published>
+    <content type="html">&lt;p&gt;This week's newsletter
+summarizes a &lt;a href="/en/topics/pooled-mining/"&gt;mining&lt;/a&gt; analysis.&lt;/p&gt;
+&lt;h2 id="news"&gt;News&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;&lt;a href="#x"&gt;&#9679;&lt;/a&gt; &lt;strong&gt;Topic:&lt;/strong&gt; text&lt;/li&gt;&lt;/ul&gt;</content>
+  </entry>
+  <entry>
+    <title type="html">Bitcoin Optech Newsletter #431 Recap Podcast</title>
+    <link href="https://bitcoinops.org/en/podcast/2026/11/17/" rel="alternate"/>
+    <published>2026-11-17T00:00:00+00:00</published>
+    <content type="html">&lt;p&gt;podcast&lt;/p&gt;</content>
+  </entry>
+</feed>"""
+
+
+def test_optech_feed_keeps_newsletters_as_clean_markdown():
+    items, bodies = server.parse_optech_feed(OPTECH_SAMPLE)
+    assert [i["number"] for i in items] == [432]  # the podcast recap is left out
+    body = bodies[items[0]["url"]]
+    assert "https://bitcoinops.org/en/topics/pooled-mining/" in body  # relative link made absolute
+    assert "newsletter summarizes" in body  # wrapped source lines joined
+    assert "●" not in body and "](#" not in body  # anchor bullets removed
+    assert "## News" in body and items[0]["license"] == "MIT"
+
+
+def test_article_text_keeps_words_apart_across_links():
+    html = b"<p>The CFTC released the <a href='#'>agenda</a> for a roundtable (<b>24/7</b> trading) today.</p>"
+    assert server.extract_article_text(html) == "The CFTC released the agenda for a roundtable (24/7 trading) today."
+
+
+def test_full_text_is_only_served_for_sources_that_allow_it(client):
+    response = client.get("/v1/news/article", params={"url": "https://cointelegraph.com/news/x"})
+    assert response.status_code == 403
+
+
+def test_summaries_can_be_switched_off_per_host(client, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("SUMMARY_BLOCKED_HOSTS", "cointelegraph.com")
+    server._gemini_client.cache_clear()
+    blocked = client.get("/v1/news/summary", params={"url": "https://cointelegraph.com/news/x"})
+    assert blocked.status_code == 403
+    assert client.get("/v1/news/summary", params={"url": "https://cointelegraph.com/x", "style": "long"}).status_code == 422
