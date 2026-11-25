@@ -42,6 +42,9 @@ CHAT_MODELS = [m.strip() for m in os.getenv(
 # reply was cut off after one sentence.
 MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", "2048"))
 THINKING_BUDGET = int(os.getenv("THINKING_BUDGET", "256"))
+# Summaries are short, but Gemini 3 still thinks a little and Turkish takes more tokens than
+# English; 1024 cut a Turkish newsletter digest off after one bullet.
+SUMMARY_MAX_OUTPUT_TOKENS = int(os.getenv("SUMMARY_MAX_OUTPUT_TOKENS", "2048"))
 # Gemini 3 models ignore thinking_budget and take a coarse level instead.
 THINKING_LEVEL = os.getenv("THINKING_LEVEL", "low")
 TRUNCATED_NOTE = "\n\n*(The answer was cut short. Ask me to continue.)*"
@@ -173,8 +176,9 @@ def language_note(lang: str) -> str:
     if not name or lang == "en":
         return ""
     return (
-        f"The app is set to {name}. Answer in {name} unless the user clearly writes in "
-        "another language; keep names, tickers and article titles as they are."
+        f"The app is set to {name}. Reply in the language of the user's question; when it has "
+        f"no clear language (only a ticker, a number or a link), reply in {name}. Keep names, "
+        "tickers and article titles as they are."
     )
 
 
@@ -536,7 +540,7 @@ def _summarize(client: genai.Client, text: str, instruction: str = SUMMARY_INSTR
         # Gemini 3 models still think at the lowest level, and that counts toward the cap.
         config = types.GenerateContentConfig(
             system_instruction=instruction,
-            max_output_tokens=1024,
+            max_output_tokens=SUMMARY_MAX_OUTPUT_TOKENS,
             thinking_config=_thinking_config(model, budget=0),
         )
         try:
@@ -544,6 +548,10 @@ def _summarize(client: genai.Client, text: str, instruction: str = SUMMARY_INSTR
                 model=model, contents=f"ARTICLE:\n{text[:20000]}", config=config
             )
             summary = (response.text or "").strip()
+            if summary and _hit_token_cap(response):
+                # A cut-off summary was once cached and shown mid-word; keep only whole bullets.
+                logger.warning("Summary from %s hit the token cap", model)
+                summary = drop_unfinished_line(summary)
             if summary:
                 return summary
         except Exception as exc:
@@ -554,6 +562,12 @@ def _summarize(client: genai.Client, text: str, instruction: str = SUMMARY_INSTR
     if last_error:
         raise last_error
     return ""
+
+
+def drop_unfinished_line(text: str) -> str:
+    """Remove the last line of a reply that stopped at the token cap; "" if nothing else is left."""
+    lines = text.rstrip().splitlines()
+    return "\n".join(lines[:-1]).strip()
 
 
 def bullet_lines_only(text: str) -> str:

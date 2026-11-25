@@ -352,3 +352,17 @@ def test_summary_language_is_validated(client, monkeypatch):
     server._gemini_client.cache_clear()
     response = client.get("/v1/news/summary", params={"url": "https://coindesk.com/a", "lang": "TR-tr"})
     assert response.status_code == 422
+
+
+def test_a_summary_cut_off_at_the_token_cap_keeps_only_whole_lines():
+    from types import SimpleNamespace
+
+    from google.genai import types
+
+    cut = SimpleNamespace(
+        text="- First whole point.\n- Second whole point.\n- Third one stops mid-wo",
+        candidates=[SimpleNamespace(finish_reason=types.FinishReason.MAX_TOKENS)],
+    )
+    client = SimpleNamespace(models=SimpleNamespace(generate_content=lambda **_: cut))
+    assert server._summarize(client, "text") == "- First whole point.\n- Second whole point."
+    assert server.drop_unfinished_line("- only line, cut") == ""
