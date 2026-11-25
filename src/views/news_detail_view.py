@@ -145,7 +145,8 @@ def news_detail_view_component(item, on_back_click, page):
     def fetch_summary():
         summary, error = news_service.fetch_article_summary(api_url, article_url)
         summary_text.value = summary or f"*{error}*"
-        summary_card.visible = True
+        # No card at all when the source has no summary: the feed excerpt and the link remain.
+        summary_card.visible = error != news_service.SUMMARY_UNAVAILABLE
         summary_loading.visible = False
         summarize_button.text = "Summarize with AI"
         summarize_button.disabled = False

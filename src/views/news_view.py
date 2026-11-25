@@ -150,23 +150,31 @@ def news_view_component(page: ft.Page, on_news_click, on_newsletter_click=None):
                     on_click=lambda _, i=item: on_news_click(i),
                     content=ft.Row(
                         [
-                            ft.Image(
-                                src=img_url,
+                            # The placeholder sits behind the picture, so a thumbnail that never
+                            # paints (some large publisher PNGs) still shows a tile, not a gap.
+                            ft.Container(
                                 width=80,
                                 height=80,
-                                fit="cover",
+                                bgcolor="#1E293B",
                                 border_radius=12,
-                                error_content=ft.Container(
-                                    width=80,
-                                    height=80,
-                                    bgcolor="#1E293B",
-                                    border_radius=12,
-                                    content=ft.Icon(
-                                        ft.Icons.IMAGE_NOT_SUPPORTED_OUTLINED,
-                                        color=ft.Colors.GREY_700,
-                                        size=28,
-                                    ),
-                                    alignment=ft.alignment.center,
+                                clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                                content=ft.Stack(
+                                    [
+                                        ft.Container(
+                                            width=80,
+                                            height=80,
+                                            alignment=ft.alignment.center,
+                                            content=ft.Icon(ft.Icons.IMAGE_OUTLINED, color=ft.Colors.GREY_700, size=28),
+                                        ),
+                                        ft.Image(
+                                            src=img_url,
+                                            width=80,
+                                            height=80,
+                                            fit="cover",
+                                            border_radius=12,
+                                            error_content=ft.Container(),
+                                        ),
+                                    ]
                                 ),
                             ),
                             ft.Column(

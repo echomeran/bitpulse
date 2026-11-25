@@ -33,6 +33,10 @@ def fetch_full_article(api_url: str, article_url: str) -> str | None:
         return None
 
 
+# Returned when the server has no summary for this source (publisher has not allowed AI use).
+SUMMARY_UNAVAILABLE = "A summary is not available for this article."
+
+
 def fetch_article_summary(
     api_url: str, article_url: str, style: str = "brief"
 ) -> tuple[str | None, str | None]:
@@ -48,7 +52,7 @@ def fetch_article_summary(
         if resp.status_code == 429:
             return None, "The AI service is busy. Please try again in a minute."
         if resp.status_code in (403, 502):
-            return None, "A summary is not available for this article."
+            return None, SUMMARY_UNAVAILABLE
         if resp.status_code >= 400:
             logger.warning("Summary request returned HTTP %s", resp.status_code)
             return None, "Could not summarize this article."
@@ -77,6 +81,10 @@ def byline(item: dict) -> str:
     """Publisher, with the journalist appended when the feed names one."""
     publisher = item.get("publisher") or "CoinDesk"
     author = (item.get("author") or "").strip()
+    # Cointelegraph's feed writes "Cointelegraph by Ezra Reguerra"; the publisher is shown already.
+    prefix = f"{publisher} by "
+    if author.lower().startswith(prefix.lower()):
+        author = author[len(prefix) :].strip()
     return f"{publisher} · {author}" if author and author != publisher else publisher
 
 

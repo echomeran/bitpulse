@@ -51,6 +51,20 @@ def test_byline_names_the_outlet_then_the_journalist():
     assert news_service.byline({"publisher": "CoinDesk", "author": "CoinDesk"}) == "CoinDesk"
 
 
+def test_byline_drops_the_outlet_repeated_in_the_author():
+    item = {"publisher": "Cointelegraph", "author": "Cointelegraph by Ezra Reguerra"}
+    assert news_service.byline(item) == "Cointelegraph · Ezra Reguerra"
+
+
+def test_newsletter_chip_labels_are_singular_for_one():
+    from views.newsletter_view import count_label
+
+    assert count_label(1, "releases") == "1 release"
+    assert count_label(2, "releases") == "2 releases"
+    assert count_label(1, "code changes") == "1 code change"
+    assert count_label(1, "news") == "1 news"
+
+
 def test_get_image_url_falls_back():
     assert news_service.get_image_url({}) == news_service.DEFAULT_IMAGE
     assert news_service.get_image_url({"thumbnail": {"resolutions": [{"url": ""}]}}) == news_service.DEFAULT_IMAGE

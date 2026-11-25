@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 
 import flet as ft
@@ -12,6 +13,27 @@ from views.news_view import news_view_component
 from views.newsletter_view import newsletter_view_component
 
 
+def exit_with_the_screen(page: ft.Page) -> None:
+    """End the process when Android destroys the app's screen (e.g. Back on the home screen).
+
+    Android keeps the process, and with it this Python program, alive after the screen closes.
+    The next launch then starts a new screen in the same process, but the embedded Python refuses
+    to run a second program ("Python already initialized ... skipping execution"), so the app
+    opens blank. Exiting here makes the next launch a clean cold start.
+    """
+
+    def leave(_=None):
+        logging.getLogger("bitpulse").info("Screen closed; ending the process for a clean restart")
+        os._exit(0)
+
+    def on_lifecycle(e):
+        if e.state == ft.AppLifecycleState.DETACH:
+            leave()
+
+    page.on_disconnect = leave
+    page.on_app_lifecycle_state_change = on_lifecycle
+
+
 def main(page: ft.Page):
     page.title = "BitPulse"
     page.theme_mode = ft.ThemeMode.DARK
@@ -23,6 +45,8 @@ def main(page: ft.Page):
         page.window.width = 400
         page.window.height = 750
         page.window.resizable = False
+    else:
+        exit_with_the_screen(page)
 
     main_container = ft.Container(expand=True)
     selected_news_item = {"value": None}
@@ -58,7 +82,8 @@ def main(page: ft.Page):
 
     def handle_nav_change(e):
         idx = e.control.selected_index
-        refresh_button_container.visible = idx == 0
+        # Hide only the button: the 40 px slot stays, so the logo stays centred on every tab.
+        refresh_button_container.content.visible = idx == 0
 
         if idx == 0:
             main_container.content = news_layout

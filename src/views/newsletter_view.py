@@ -66,6 +66,13 @@ def _markdown(text: str, page: ft.Page) -> ft.Markdown:
     )
 
 
+def count_label(count: int, label: str) -> str:
+    """'1 release', '2 releases', '1 code change'; 'news' has no singular form."""
+    if count == 1 and label.endswith("s") and label != "news":
+        label = label[:-1]
+    return f"{count} {label}"
+
+
 def header_card(item: dict, counts: dict, minutes) -> ft.Container:
     chips = []
     for title, count in counts.items():
@@ -76,7 +83,7 @@ def header_card(item: dict, counts: dict, minutes) -> ft.Container:
                 border_radius=12,
                 bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.BLACK),
                 content=ft.Row(
-                    [ft.Icon(icon, size=13, color=ft.Colors.WHITE), ft.Text(f"{count} {label}", size=11, color=ft.Colors.WHITE)],
+                    [ft.Icon(icon, size=13, color=ft.Colors.WHITE), ft.Text(count_label(count, label), size=11, color=ft.Colors.WHITE)],
                     spacing=4,
                     tight=True,
                 ),
