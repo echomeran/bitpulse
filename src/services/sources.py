@@ -59,7 +59,7 @@ PERIOD_CONFIG = {
     "1H": {"interval": "2m", "range": "2d", "window": 3600, "coingecko_days": "1"},
     "1D": {"interval": "15m", "range": "2d", "window": 86400, "coingecko_days": "1"},
     "1W": {"interval": "1h", "range": "1mo", "window": 7 * 86400, "coingecko_days": "7"},
-    "1M": {"interval": "1d", "range": "1mo", "window": None, "coingecko_days": "30"},
+    "1M": {"interval": "90m", "range": "1mo", "window": 30 * 86400, "coingecko_days": "30"},
     "1Y": {"interval": "1d", "range": "1y", "window": None, "coingecko_days": "365"},
     "5Y": {"interval": "1wk", "range": "5y", "window": None, "coingecko_days": "1825"},
 }
