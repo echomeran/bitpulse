@@ -4,7 +4,7 @@ import logging
 
 import requests
 
-from services import sources
+from services import i18n, sources
 from services.cache import load_json, save_json
 from services.net import session
 
@@ -46,7 +46,7 @@ def fetch_article_summary(
     try:
         resp = session.get(
             f"{api_url}/v1/news/summary",
-            params={"url": article_url, "style": style},
+            params={"url": article_url, "style": style, "lang": i18n.language()},
             timeout=(5, 40),
         )
         if resp.status_code == 429:
@@ -93,6 +93,14 @@ def published_label(item: dict) -> str:
     if timestamp is not None:
         return sources.format_relative_time(timestamp)
     return item.get("published_at") or "Latest"
+
+
+def display_time(item: dict) -> str:
+    """Like published_label, but in the interface language (published_label feeds the AI)."""
+    timestamp = item.get("published_ts")
+    if timestamp is not None:
+        return i18n.relative_time(timestamp)
+    return item.get("published_at") or i18n.t("Latest")
 
 
 def get_image_url(item: dict) -> str:

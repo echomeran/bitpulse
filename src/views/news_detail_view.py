@@ -5,15 +5,16 @@ import flet as ft
 import services.news_service as news_service
 from services import sources
 from services.ai_service import get_api_url
+from services.i18n import t
 from views.chat_panel import chat_panel, markdown_style
 
 
 def news_detail_view_component(item, on_back_click, page):
     img_url = news_service.get_image_url(item)
-    summary = item.get("description") or "No article summary is available."
+    summary = item.get("description") or t("No article summary is available.")
     article_url = item.get("link", "")
     can_open = article_url.startswith(("https://", "http://"))
-    publisher = item.get("publisher") or "the publisher"
+    publisher = item.get("publisher") or t("the publisher")
     # Only sources whose licence allows it are shown in full (US regulators, Bitcoin Optech).
     # For everyone else the app shows the publisher's own feed excerpt, a short AI summary in
     # new words, and a prominent link, so the original article stays the place to read it.
@@ -32,7 +33,7 @@ def news_detail_view_component(item, on_back_click, page):
     )
 
     loading_indicator = ft.ProgressRing(width=16, height=16, color=ft.Colors.BLUE_400)
-    loading_text = ft.Text("Loading full article...", color=ft.Colors.GREY_500, size=13)
+    loading_text = ft.Text(t("Loading full article..."), color=ft.Colors.GREY_500, size=13)
     loading_row = ft.Row([loading_indicator, loading_text], visible=False)
 
     def fetch_full(api_url):
@@ -75,12 +76,12 @@ def news_detail_view_component(item, on_back_click, page):
                     spacing=6,
                     controls=[
                         ft.Icon(ft.Icons.AUTO_AWESOME, color=ft.Colors.BLUE_400, size=16),
-                        ft.Text("AI summary", size=12, weight="bold", color=ft.Colors.BLUE_300),
+                        ft.Text(t("AI summary"), size=12, weight="bold", color=ft.Colors.BLUE_300),
                     ],
                 ),
                 summary_text,
                 ft.Text(
-                    f"Written by AI from {publisher}'s article; it can contain mistakes.",
+                    t("Written by AI from {publisher}'s article; it can contain mistakes.", publisher=publisher),
                     size=11,
                     italic=True,
                     color=ft.Colors.GREY_600,
@@ -98,7 +99,7 @@ def news_detail_view_component(item, on_back_click, page):
                 controls=[
                     ft.Divider(height=20, color="#222222"),
                     ft.Text(
-                        "Ask about this article",
+                        t("Ask about this article"),
                         size=12,
                         weight="bold",
                         color=ft.Colors.BLUE_300,
@@ -112,11 +113,11 @@ def news_detail_view_component(item, on_back_click, page):
                 ],
             )
         chat_section.visible = not chat_section.visible
-        ask_button.text = "Hide questions" if chat_section.visible else "Ask about this article"
+        ask_button.text = t("Hide questions") if chat_section.visible else t("Ask about this article")
         page.update()
 
     summarize_button = ft.OutlinedButton(
-        "Summarize with AI",
+        t("Summarize with AI"),
         icon=ft.Icons.AUTO_AWESOME,
         disabled=not can_summarize,
         visible=full_text_allowed,
@@ -124,7 +125,7 @@ def news_detail_view_component(item, on_back_click, page):
     )
 
     ask_button = ft.OutlinedButton(
-        "Ask about this article",
+        t("Ask about this article"),
         icon=ft.Icons.CHAT_BUBBLE_OUTLINE_ROUNDED,
         disabled=not can_summarize,
         on_click=toggle_chat,
@@ -136,7 +137,7 @@ def news_detail_view_component(item, on_back_click, page):
         if summarizing["value"]:
             return
         summarizing["value"] = True
-        summarize_button.text = "Summarizing…"
+        summarize_button.text = t("Summarizing…")
         summarize_button.disabled = True
         if summarize_button.page:
             summarize_button.update()
@@ -144,11 +145,11 @@ def news_detail_view_component(item, on_back_click, page):
 
     def fetch_summary():
         summary, error = news_service.fetch_article_summary(api_url, article_url)
-        summary_text.value = summary or f"*{error}*"
+        summary_text.value = summary or f"*{t(error)}*"
         # No card at all when the source has no summary: the feed excerpt and the link remain.
         summary_card.visible = error != news_service.SUMMARY_UNAVAILABLE
         summary_loading.visible = False
-        summarize_button.text = "Summarize with AI"
+        summarize_button.text = t("Summarize with AI")
         summarize_button.disabled = False
         summarizing["value"] = False
         if summarize_button.page:
@@ -157,7 +158,7 @@ def news_detail_view_component(item, on_back_click, page):
     summary_loading = ft.Row(
         [
             ft.ProgressRing(width=14, height=14, color=ft.Colors.BLUE_400),
-            ft.Text("Writing a short AI summary…", size=12, color=ft.Colors.GREY_500),
+            ft.Text(t("Writing a short AI summary…"), size=12, color=ft.Colors.GREY_500),
         ],
         visible=False,
     )
@@ -167,7 +168,7 @@ def news_detail_view_component(item, on_back_click, page):
         threading.Thread(target=fetch_summary, daemon=True).start()
 
     read_original_button = ft.FilledButton(
-        f"Read the full article on {publisher}",
+        t("Read the full article on {publisher}", publisher=publisher),
         icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
         on_click=open_original_article,
         disabled=not can_open,
@@ -184,7 +185,7 @@ def news_detail_view_component(item, on_back_click, page):
                     icon_color=ft.Colors.WHITE,
                     on_click=on_back_click,
                     icon_size=20,
-                    tooltip="Back to news",
+                    tooltip=t("Back to news"),
                 ),
                 ft.Text(
                     item.get("publisher") or "CoinDesk",
@@ -222,13 +223,13 @@ def news_detail_view_component(item, on_back_click, page):
                     [
                         ft.Text(item.get("title", "Crypto News"), size=20, weight="bold"),
                         ft.Text(
-                            news_service.published_label(item),
+                            news_service.display_time(item),
                             size=12,
                             color=ft.Colors.GREY_500,
                         ),
                         ft.Divider(height=20, color="#222222"),
                         ft.Text(
-                            f"From {publisher}:",
+                            t("From {publisher}:", publisher=publisher),
                             size=11,
                             weight="bold",
                             color=ft.Colors.GREY_500,
@@ -246,9 +247,9 @@ def news_detail_view_component(item, on_back_click, page):
                         loading_row,
                         content_text if full_text_allowed else ft.Container(),
                         ft.Divider(height=30, color="#222222"),
-                        ft.Text("Source: " + news_service.byline(item), color=ft.Colors.GREY_500, size=12),
+                        ft.Text(t("Source: {source}", source=news_service.byline(item)), color=ft.Colors.GREY_500, size=12),
                         ft.OutlinedButton(
-                            "Open original article",
+                            t("Open original article"),
                             icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
                             on_click=open_original_article,
                             disabled=not can_open,

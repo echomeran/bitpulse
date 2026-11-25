@@ -8,6 +8,7 @@ import flet as ft
 import services.market_service as market_service
 import services.news_service as news_service
 from services.ai_service import ERR_UNREACHABLE, get_api_url, report_reply, stream_chat_message
+from services.i18n import t
 
 logger = logging.getLogger("bitpulse.chat")
 
@@ -83,15 +84,15 @@ def add_report_action(page: ft.Page, row: ft.Row, question: str, answer: str, ar
     """Put a small "Report" link under an AI reply. Google Play requires a way to flag AI output."""
     column = row.controls[0]
     link = ft.TextButton(
-        "Report",
+        t("Report"),
         icon=ft.Icons.FLAG_OUTLINED,
         style=ft.ButtonStyle(color=ft.Colors.GREY_500, padding=ft.padding.symmetric(horizontal=6)),
-        tooltip="Report this answer as wrong, harmful or offensive",
+        tooltip=t("Report this answer as wrong, harmful or offensive"),
     )
 
     def send():
         sent = report_reply(get_api_url(), question, answer, article_url)
-        link.text = "Reported. Thank you." if sent else "Could not send report. Try again."
+        link.text = t("Reported. Thank you.") if sent else t("Could not send report. Try again.")
         link.icon = ft.Icons.FLAG if sent else ft.Icons.FLAG_OUTLINED
         link.disabled = sent
         page.update()
@@ -110,14 +111,14 @@ def typing_indicator():
         content=ft.Row(
             [
                 ft.ProgressRing(width=16, height=16, stroke_width=2, color=ft.Colors.BLUE_400),
-                ft.Text("BitPulse is thinking…", size=13, italic=True, color=ft.Colors.BLUE_300),
+                ft.Text(t("BitPulse is thinking…"), size=13, italic=True, color=ft.Colors.BLUE_300),
             ],
             spacing=12,
         ),
         padding=ft.padding.all(12),
         bgcolor="#0F172A",
         border_radius=20,
-        width=180,
+        width=200,
     )
 
 
@@ -137,7 +138,7 @@ def chat_panel(
         padding=10,
     )
     if greeting:
-        chat_list.controls.append(create_chat_bubble(greeting, is_user=False)[0])
+        chat_list.controls.append(create_chat_bubble(t(greeting), is_user=False)[0])
     conversation_history: list[dict] = []
     sending = {"value": False}
 
@@ -153,7 +154,7 @@ def chat_panel(
 
         api_url = get_api_url()
         if not api_url:
-            chat_list.controls.append(create_chat_bubble(NO_BACKEND_MESSAGE, is_user=False)[0])
+            chat_list.controls.append(create_chat_bubble(t(NO_BACKEND_MESSAGE), is_user=False)[0])
             page.update()
             return
 
@@ -196,7 +197,7 @@ def chat_panel(
             if error_message:
                 if reply_row in chat_list.controls:
                     chat_list.controls.remove(reply_row)
-                chat_list.controls.append(create_chat_bubble(error_message, is_user=False)[0])
+                chat_list.controls.append(create_chat_bubble(t(error_message), is_user=False)[0])
             else:
                 reply_label.value = reply
                 if reply_row not in chat_list.controls:
@@ -212,13 +213,13 @@ def chat_panel(
                 chat_list.controls.remove(indicator)
             if reply_row in chat_list.controls:
                 chat_list.controls.remove(reply_row)
-            chat_list.controls.append(create_chat_bubble(ERR_UNREACHABLE, is_user=False)[0])
+            chat_list.controls.append(create_chat_bubble(t(ERR_UNREACHABLE), is_user=False)[0])
         finally:
             set_busy(False)
             page.update()
 
     chat_input = ft.TextField(
-        hint_text=hint,
+        hint_text=t(hint),
         hint_style=ft.TextStyle(color=ft.Colors.GREY_600),
         expand=True,
         on_submit=send_message_click,
@@ -236,7 +237,7 @@ def chat_panel(
             on_click=send_message_click,
             icon_color=ft.Colors.WHITE,
             icon_size=20,
-            tooltip="Send message",
+            tooltip=t("Send message"),
         ),
         bgcolor=ft.Colors.BLUE_600,
         shape=ft.BoxShape.CIRCLE,

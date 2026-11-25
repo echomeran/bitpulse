@@ -1,5 +1,6 @@
 import flet as ft
 
+from services.i18n import t
 from views.chat_panel import chat_panel
 
 GREETING = (
@@ -23,10 +24,10 @@ def ai_view_component(page: ft.Page):
             ft.Container(
                 content=ft.Column(
                     [
-                        ft.Text("BitPulse AI Assistant", size=24, weight="bold"),
-                        ft.Text(DISCLAIMER, size=11, color=ft.Colors.GREY_500),
+                        ft.Text(t("BitPulse AI Assistant"), size=24, weight="bold"),
+                        ft.Text(t(DISCLAIMER), size=11, color=ft.Colors.GREY_500),
                         ft.TextButton(
-                            "Privacy policy",
+                            t("Privacy policy"),
                             on_click=lambda _: page.launch_url(PRIVACY_POLICY_URL),
                             style=ft.ButtonStyle(
                                 color=ft.Colors.BLUE_300, padding=ft.padding.all(0)

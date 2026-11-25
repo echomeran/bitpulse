@@ -10,7 +10,9 @@ import threading
 import flet as ft
 
 import services.news_service as news_service
+from services import i18n
 from services.ai_service import get_api_url
+from services.i18n import t
 from views.chat_panel import chat_panel, markdown_style
 
 OPTECH_LICENSE_URL = "https://bitcoinops.org/en/about/"
@@ -68,9 +70,7 @@ def _markdown(text: str, page: ft.Page) -> ft.Markdown:
 
 def count_label(count: int, label: str) -> str:
     """'1 release', '2 releases', '1 code change'; 'news' has no singular form."""
-    if count == 1 and label.endswith("s") and label != "news":
-        label = label[:-1]
-    return f"{count} {label}"
+    return i18n.count_label(count, label)
 
 
 def header_card(item: dict, counts: dict, minutes) -> ft.Container:
@@ -89,9 +89,13 @@ def header_card(item: dict, counts: dict, minutes) -> ft.Container:
                 ),
             )
         )
-    meta = item.get("published_at", "")
+    meta = news_service.display_time(item) if item.get("published_ts") is not None else item.get("published_at", "")
     if minutes:
-        meta = f"{meta} · full text ~{minutes} min" if meta else f"Full text ~{minutes} min"
+        meta = (
+            t("{when} · full text ~{minutes} min", when=meta, minutes=minutes)
+            if meta
+            else t("Full text ~{minutes} min", minutes=minutes)
+        )
     return ft.Container(
         padding=18,
         border_radius=18,
@@ -103,8 +107,8 @@ def header_card(item: dict, counts: dict, minutes) -> ft.Container:
         content=ft.Column(
             spacing=6,
             controls=[
-                ft.Text("BITCOIN OPTECH · WEEKLY", size=11, weight="bold", color=ft.Colors.with_opacity(0.85, ft.Colors.WHITE)),
-                ft.Text(f"Newsletter #{item.get('number', '')}", size=26, weight="bold", color=ft.Colors.WHITE),
+                ft.Text(t("BITCOIN OPTECH · WEEKLY"), size=11, weight="bold", color=ft.Colors.with_opacity(0.85, ft.Colors.WHITE)),
+                ft.Text(t("Newsletter #{number}", number=item.get("number", "")), size=26, weight="bold", color=ft.Colors.WHITE),
                 ft.Text(meta, size=12, color=ft.Colors.with_opacity(0.85, ft.Colors.WHITE)),
                 ft.Row(chips, wrap=True, spacing=6, run_spacing=6) if chips else ft.Container(),
             ],
@@ -190,7 +194,7 @@ def digest_card() -> tuple[ft.Container, ft.Markdown, ft.Row]:
     loading = ft.Row(
         [
             ft.ProgressRing(width=14, height=14, color=ft.Colors.BLUE_400),
-            ft.Text("Writing a plain-language digest…", size=12, color=ft.Colors.GREY_500),
+            ft.Text(t("Writing a plain-language digest…"), size=12, color=ft.Colors.GREY_500),
         ],
         visible=False,
     )
@@ -205,14 +209,14 @@ def digest_card() -> tuple[ft.Container, ft.Markdown, ft.Row]:
                 ft.Row(
                     [
                         ft.Icon(ft.Icons.AUTO_AWESOME, color=ft.Colors.BLUE_400, size=16),
-                        ft.Text("This week in plain words", size=13, weight="bold", color=ft.Colors.BLUE_200),
+                        ft.Text(t("This week in plain words"), size=13, weight="bold", color=ft.Colors.BLUE_200),
                     ],
                     spacing=6,
                 ),
                 loading,
                 text,
                 ft.Text(
-                    "Written by AI from the newsletter; it can contain mistakes. Tap a card below for the original.",
+                    t("Written by AI from the newsletter; it can contain mistakes. Tap a card below for the original."),
                     size=11,
                     italic=True,
                     color=ft.Colors.GREY_600,
@@ -235,13 +239,13 @@ def newsletter_view_component(item: dict, on_back_click, page: ft.Page):
     status = ft.Row(
         [
             ft.ProgressRing(width=16, height=16, color=ft.Colors.ORANGE_ACCENT),
-            ft.Text("Loading the newsletter…", size=13, color=ft.Colors.GREY_500),
+            ft.Text(t("Loading the newsletter…"), size=13, color=ft.Colors.GREY_500),
         ],
         visible=bool(api_url),
     )
 
     def show_digest(summary, error):
-        digest_text.value = summary or f"*{error}*"
+        digest_text.value = summary or f"*{t(error)}*"
         digest_loading.visible = False
         if digest.page:
             page.update()
@@ -250,7 +254,7 @@ def newsletter_view_component(item: dict, on_back_click, page: ft.Page):
         data = news_service.fetch_newsletter(api_url, url)
         status.visible = False
         if not data:
-            status.controls = [ft.Text("Could not load the newsletter. Check your connection.", size=13, color=ft.Colors.GREY_500)]
+            status.controls = [ft.Text(t("Could not load the newsletter. Check your connection."), size=13, color=ft.Colors.GREY_500)]
             status.visible = True
             digest.visible = False
             if status.page:
@@ -262,7 +266,8 @@ def newsletter_view_component(item: dict, on_back_click, page: ft.Page):
             sections_column.controls = [section_block(s, page) for s in sections]
         else:
             sections_column.controls = [_markdown(data.get("markdown", ""), page)]
-        if data.get("digest"):
+        # The server writes the English digest ahead of time; other languages are asked for.
+        if data.get("digest") and i18n.language() == "en":
             show_digest(data["digest"], None)
         else:
             digest_loading.visible = True
@@ -288,11 +293,11 @@ def newsletter_view_component(item: dict, on_back_click, page: ft.Page):
                 chat_height=320,
             )
         chat_section.visible = not chat_section.visible
-        ask_button.text = "Hide questions" if chat_section.visible else "Ask about this issue"
+        ask_button.text = t("Hide questions") if chat_section.visible else t("Ask about this issue")
         page.update()
 
     ask_button = ft.OutlinedButton(
-        "Ask about this issue",
+        t("Ask about this issue"),
         icon=ft.Icons.CHAT_BUBBLE_OUTLINE_ROUNDED,
         disabled=not api_url,
         on_click=toggle_chat,
@@ -308,7 +313,7 @@ def newsletter_view_component(item: dict, on_back_click, page: ft.Page):
                     icon_color=ft.Colors.WHITE,
                     on_click=on_back_click,
                     icon_size=20,
-                    tooltip="Back to news",
+                    tooltip=t("Back to news"),
                 ),
                 ft.Text("Bitcoin Optech", size=13, color=ft.Colors.GREY_400),
             ],
@@ -332,15 +337,15 @@ def newsletter_view_component(item: dict, on_back_click, page: ft.Page):
                         status,
                         sections_column,
                         ft.Divider(height=20, color="#222222"),
-                        ft.Text(CREDIT, size=11, color=ft.Colors.GREY_600),
+                        ft.Text(t(CREDIT), size=11, color=ft.Colors.GREY_600),
                         ft.Row(
                             [
                                 ft.TextButton(
-                                    "Open on bitcoinops.org",
+                                    t("Open on bitcoinops.org"),
                                     icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
                                     on_click=lambda _: page.launch_url(url),
                                 ),
-                                ft.TextButton("License", on_click=lambda _: page.launch_url(OPTECH_LICENSE_URL)),
+                                ft.TextButton(t("License"), on_click=lambda _: page.launch_url(OPTECH_LICENSE_URL)),
                             ],
                             wrap=True,
                         ),

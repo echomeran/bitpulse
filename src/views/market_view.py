@@ -6,7 +6,9 @@ from datetime import datetime
 import flet as ft
 
 import services.market_service as market_service
+from services import i18n
 from services.ai_service import get_api_url
+from services.i18n import t
 
 logger = logging.getLogger("bitpulse.market_view")
 
@@ -51,7 +53,7 @@ def market_view_component(page: ft.Page):
         weight="bold",
         animate_opacity=ft.Animation(400, ft.AnimationCurve.EASE_OUT),
     )
-    fng_label = ft.Text("Loading...", size=12, color=ft.Colors.GREY_500)
+    fng_label = ft.Text(t("Loading..."), size=12, color=ft.Colors.GREY_500)
     fng_ring = ft.ProgressRing(
         width=40, height=40, stroke_width=5, value=0.0, bgcolor="#1E293B"
     )
@@ -71,16 +73,16 @@ def market_view_component(page: ft.Page):
     )
 
     current_time_label = ft.Text(
-        "Waiting for data...", size=12, color=ft.Colors.GREY_500
+        t("Waiting for data..."), size=12, color=ft.Colors.GREY_500
     )
-    high_label = ft.Text("High: --", size=12, color=ft.Colors.GREEN_400, weight="bold")
-    low_label = ft.Text("Low: --", size=12, color=ft.Colors.RED_400, weight="bold")
+    high_label = ft.Text(t("High: {price}", price="--"), size=12, color=ft.Colors.GREEN_400, weight="bold")
+    low_label = ft.Text(t("Low: {price}", price="--"), size=12, color=ft.Colors.RED_400, weight="bold")
 
     selected_period = {"value": "1D"}
 
     retry_container = ft.Container(
         content=ft.OutlinedButton(
-            "Retry",
+            t("Retry"),
             icon=ft.Icons.REFRESH_ROUNDED,
             on_click=lambda _: request_period(selected_period["value"]),
         ),
@@ -127,7 +129,7 @@ def market_view_component(page: ft.Page):
 
     def make_period_button(label):
         btn = ft.Container(
-            content=ft.Text(label, size=13, weight="bold", color=ft.Colors.GREY_500),
+            content=ft.Text(t(label), size=13, weight="bold", color=ft.Colors.GREY_500),
             padding=ft.padding.symmetric(horizontal=14, vertical=6),
             border_radius=20,
             bgcolor="transparent",
@@ -176,9 +178,9 @@ def market_view_component(page: ft.Page):
         change_label.color = (
             ft.Colors.GREEN_400 if change_pct >= 0 else ft.Colors.RED_400
         )
-        high_label.value = f"High: ${high:,.2f}"
-        low_label.value = f"Low: ${low:,.2f}"
-        current_time_label.value = f"Live • {datetime.now().strftime('%H:%M:%S')}"
+        high_label.value = t("High: {price}", price=f"${high:,.2f}")
+        low_label.value = t("Low: {price}", price=f"${low:,.2f}")
+        current_time_label.value = t("Live • {time}", time=datetime.now().strftime("%H:%M:%S"))
         current_time_label.color = ft.Colors.GREY_500
 
         # Build chart points with normalized X axis (0 to 100) for smooth morphing
@@ -223,9 +225,9 @@ def market_view_component(page: ft.Page):
                 if selected_period["value"] in ["1H", "1D"]:
                     return dt.strftime("%H:%M")
                 elif selected_period["value"] in ["1W", "1M"]:
-                    return dt.strftime("%d %b")
+                    return i18n.short_date(dt)
                 else:
-                    return dt.strftime("%b '%y")
+                    return i18n.short_date(dt, with_year=True)
 
             x_step = 25
             labels = []
@@ -275,7 +277,7 @@ def market_view_component(page: ft.Page):
             try:
                 val = int(fng["value"])
                 fng_value.value = str(val)
-                fng_label.value = fng["value_classification"]
+                fng_label.value = t(fng["value_classification"])
                 fng_color = (
                     ft.Colors.GREEN_ACCENT
                     if val > 50
@@ -285,9 +287,9 @@ def market_view_component(page: ft.Page):
                 fng_ring.color = fng_color
                 fng_ring.value = val / 100.0
             except (KeyError, TypeError, ValueError):
-                fng_label.value = "Unavailable"
+                fng_label.value = t("Unavailable")
         else:
-            fng_label.value = "Unavailable"
+            fng_label.value = t("Unavailable")
 
         halving_value.value = format_halving(data.get("block_height"))
         retry_container.visible = False
@@ -325,7 +327,7 @@ def market_view_component(page: ft.Page):
                 _apply_market_data(saved, is_first_load)
                 is_first_load = False
                 showed_saved = True
-                current_time_label.value = "Saved data · updating…"
+                current_time_label.value = t("Saved data · updating…")
                 current_time_label.color = ft.Colors.GREY_600
                 page.update()
             except Exception:
@@ -341,7 +343,7 @@ def market_view_component(page: ft.Page):
             if chart_container.page:
                 chart_container.update()
         elif not showed_saved:
-            current_time_label.value = "Updating..."
+            current_time_label.value = t("Updating...")
             current_time_label.color = ft.Colors.GREY_600
             if current_time_label.page:
                 current_time_label.update()
@@ -356,19 +358,19 @@ def market_view_component(page: ft.Page):
                 market_service.save_market_cache(period, data)
             except Exception:
                 logger.exception("Chart render failed")
-                current_time_label.value = "Could not display chart data"
+                current_time_label.value = t("Could not display chart data")
                 current_time_label.color = ft.Colors.RED_ACCENT
         else:
             cached = market_service.load_cached_market(period)
             if cached and cached.get("prices"):
                 try:
                     _apply_market_data(cached, is_first_load)
-                    current_time_label.value = "Showing cached data · connection lost"
+                    current_time_label.value = t("Showing cached data · connection lost")
                     current_time_label.color = ft.Colors.ORANGE_ACCENT
                 except Exception:
                     logger.exception("Cached chart render failed")
             else:
-                current_time_label.value = "Connection lost · tap Retry"
+                current_time_label.value = t("Connection lost · tap Retry")
                 current_time_label.color = ft.Colors.RED_ACCENT
                 retry_container.visible = True
 
@@ -379,7 +381,7 @@ def market_view_component(page: ft.Page):
 
     def format_halving(block_height):
         days = market_service.estimate_days_to_halving(block_height)
-        return f"~{days} Days" if days > 0 else "Imminent"
+        return t("~{days} Days", days=days) if days > 0 else t("Imminent")
 
     halving_value = ft.Text(format_halving(None), size=16, weight="bold", color=ft.Colors.WHITE)
 
@@ -400,7 +402,7 @@ def market_view_component(page: ft.Page):
                 ft.Column(
                     [
                         ft.Text(
-                            "Sentiment",
+                            t("Sentiment"),
                             size=10,
                             color=ft.Colors.GREY_500,
                             weight="bold",
@@ -430,14 +432,14 @@ def market_view_component(page: ft.Page):
                 ft.Column(
                     [
                         ft.Text(
-                            "Next Halving",
+                            t("Next Halving"),
                             size=10,
                             color=ft.Colors.GREY_500,
                             weight="bold",
                         ),
                         halving_value,
                         ft.Text(
-                            "Estimated",
+                            t("Estimated"),
                             size=9,
                             color=ft.Colors.GREY_600,
                             italic=True,

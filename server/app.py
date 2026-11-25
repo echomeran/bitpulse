@@ -159,6 +159,23 @@ class ChatRequest(BaseModel):
     news: list[NewsItem] = Field(default_factory=list, max_length=12)
     # When the user is reading an article, the server adds its text from its own cache.
     article_url: str = Field(default="", max_length=2000)
+    # The app's interface language; older apps do not send it.
+    lang: str = Field(default="en", pattern="^[a-z]{2}$")
+
+
+# Interface languages the app offers, by code. Replies and summaries are written in these.
+LANGUAGE_NAMES = {"en": "English", "tr": "Turkish"}
+
+
+def language_note(lang: str) -> str:
+    """Prompt line naming the app's language, or "" for English and unknown codes."""
+    name = LANGUAGE_NAMES.get(lang)
+    if not name or lang == "en":
+        return ""
+    return (
+        f"The app is set to {name}. Answer in {name} unless the user clearly writes in "
+        "another language; keep names, tickers and article titles as they are."
+    )
 
 
 SYSTEM_INSTRUCTION = """
@@ -202,8 +219,10 @@ def build_prompt(payload: ChatRequest, article_text: str = "") -> str:
         if article_text
         else ""
     )
+    note = language_note(payload.lang)
     return f"""
 TODAY (UTC): {datetime.now(timezone.utc).strftime("%d %B %Y, %H:%M")}
+{f"APP LANGUAGE: {note}" if note else ""}
 {article}
 
 MARKET CONTEXT:
@@ -554,8 +573,26 @@ def _summaries_blocked(url: str) -> bool:
     return any(host == h or host.endswith("." + h) for h in blocked)
 
 
+def summary_cache_key(style: str, url: str, lang: str = "en") -> str:
+    """English keeps the original key format, which the pre-written newsletter digest uses."""
+    return f"{style}|{url}" if lang == "en" else f"{style}|{lang}|{url}"
+
+
+def summary_instruction(style: str, lang: str = "en") -> str:
+    instruction = SIMPLE_SUMMARY_INSTRUCTION if style == "simple" else SUMMARY_INSTRUCTION
+    name = LANGUAGE_NAMES.get(lang)
+    if name and lang != "en":
+        instruction += f"\nWrite the bullet lines in {name}, whatever the language of the text."
+    return instruction
+
+
 @app.get("/v1/news/summary")
-async def get_news_summary(url: str, request: Request, style: str = Query("brief", pattern="^(brief|simple)$")):
+async def get_news_summary(
+    url: str,
+    request: Request,
+    style: str = Query("brief", pattern="^(brief|simple)$"),
+    lang: str = Query("en", pattern="^[a-z]{2}$"),
+):
     client = _gemini_client()
     if client is None:
         raise HTTPException(status_code=503, detail="The AI service is not configured.")
@@ -564,7 +601,9 @@ async def get_news_summary(url: str, request: Request, style: str = Query("brief
     if _summaries_blocked(url):
         raise HTTPException(status_code=403, detail="Summaries are turned off for this source.")
 
-    cache_key = f"{style}|{url}"
+    if lang not in LANGUAGE_NAMES:
+        lang = "en"
+    cache_key = summary_cache_key(style, url, lang)
     cached = _summary_cache.get(cache_key)
     if cached is not None:
         return {"summary": cached, "url": url, "cached": True}
@@ -586,7 +625,7 @@ async def get_news_summary(url: str, request: Request, style: str = Query("brief
         raise HTTPException(status_code=502, detail="Article text could not be extracted.")
 
     try:
-        instruction = SIMPLE_SUMMARY_INSTRUCTION if style == "simple" else SUMMARY_INSTRUCTION
+        instruction = summary_instruction(style, lang)
         summary = await asyncio.wait_for(asyncio.to_thread(_summarize, client, text, instruction), timeout=28)
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="The AI provider timed out.") from None

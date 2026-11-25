@@ -4,6 +4,7 @@ import flet as ft
 
 import services.news_service as news_service
 from services.ai_service import get_api_url
+from services.i18n import t
 
 ALL_NEWS = "All News"
 
@@ -88,11 +89,11 @@ def news_view_component(page: ft.Page, on_news_click, on_newsletter_click=None):
     )
     news_container = ft.Container(content=news_list, padding=10, expand=True)
     filter_row = ft.Row(scroll=ft.ScrollMode.AUTO, spacing=5)
-    status_text = ft.Text("Loading latest news…", size=11, color=ft.Colors.GREY_500)
+    status_text = ft.Text(t("Loading latest news…"), size=11, color=ft.Colors.GREY_500)
 
     retry_button = ft.Container(
         content=ft.OutlinedButton(
-            "Retry",
+            t("Retry"),
             icon=ft.Icons.REFRESH_ROUNDED,
             on_click=lambda _: refresh_in_background(),
         ),
@@ -114,7 +115,7 @@ def news_view_component(page: ft.Page, on_news_click, on_newsletter_click=None):
                                 size=40,
                             ),
                             ft.Text(
-                                "No recent news found in this category.",
+                                t("No recent news found in this category."),
                                 color=ft.Colors.GREY_400,
                             ),
                         ],
@@ -186,7 +187,7 @@ def news_view_component(page: ft.Page, on_news_click, on_newsletter_click=None):
                                         max_lines=2,
                                     ),
                                     ft.Text(
-                                        f"{news_service.byline(item)} · {news_service.published_label(item)}",
+                                        f"{news_service.byline(item)} · {news_service.display_time(item)}",
                                         size=11,
                                         color=ft.Colors.GREY_500,
                                     ),
@@ -212,13 +213,13 @@ def news_view_component(page: ft.Page, on_news_click, on_newsletter_click=None):
                             size=20,
                         ),
                         ft.Text(
-                            "You've reached the end of the latest news.",
+                            t("You've reached the end of the latest news."),
                             size=12,
                             color=ft.Colors.GREY_600,
                             italic=True,
                         ),
                         ft.Text(
-                            f"Total {len(data)} articles scanned.",
+                            t("Total {count} articles scanned.", count=len(data)),
                             size=10,
                             color=ft.Colors.GREY_700,
                         ),
@@ -239,13 +240,14 @@ def news_view_component(page: ft.Page, on_news_click, on_newsletter_click=None):
         render_news([item for item in news_service.all_news_cache if matches_filter(item, label)])
 
     def handle_filter(e):
-        selected_filter["value"] = e.control.label.value
+        # The chip's data is the English filter key; its label is in the interface language.
+        selected_filter["value"] = e.control.data
         for chip in filter_row.controls:
-            chip.selected = chip.label.value == selected_filter["value"]
+            chip.selected = chip.data == selected_filter["value"]
         render_current()
 
     filter_row.controls = [
-        ft.Chip(label=ft.Text(label), selected=label == ALL_NEWS, on_select=handle_filter)
+        ft.Chip(label=ft.Text(t(label)), data=label, selected=label == ALL_NEWS, on_select=handle_filter)
         for label in (ALL_NEWS, *FILTERS)
     ]
 
@@ -266,7 +268,7 @@ def news_view_component(page: ft.Page, on_news_click, on_newsletter_click=None):
         animate=ft.Animation(280, ft.AnimationCurve.EASE_OUT_CUBIC),
         shadow=ft.BoxShadow(blur_radius=12, color=ft.Colors.with_opacity(0.45, ft.Colors.BLACK)),
         content=ft.Row([tab_icon, tab_label], spacing=8, tight=True),
-        tooltip="Bitcoin Optech weekly newsletter",
+        tooltip=t("Bitcoin Optech weekly newsletter"),
     )
 
     def is_unread(item) -> bool:
@@ -280,7 +282,7 @@ def news_view_component(page: ft.Page, on_news_click, on_newsletter_click=None):
         edge_tab.bgcolor = ft.Colors.ORANGE_700 if unread else "#334155"
         tab_icon.name = ft.Icons.MARK_EMAIL_UNREAD_OUTLINED if unread else ft.Icons.MAIL_OUTLINE_ROUNDED
         number = item.get("number", "")
-        tab_label.value = f"New newsletter #{number}" if unread else f"Optech newsletter #{number}"
+        tab_label.value = t("New newsletter #{number}", number=number) if unread else t("Optech newsletter #{number}", number=number)
         if edge_tab.page:
             edge_tab.update()
 
@@ -325,7 +327,7 @@ def news_view_component(page: ft.Page, on_news_click, on_newsletter_click=None):
         if not refresh_lock.acquire(blocking=False):
             return
         try:
-            status_text.value = "Refreshing news…"
+            status_text.value = t("Refreshing news…")
             retry_button.visible = False
             if status_text.page:
                 page.update()
@@ -334,11 +336,11 @@ def news_view_component(page: ft.Page, on_news_click, on_newsletter_click=None):
             if fresh_news:
                 news_service.all_news_cache = fresh_news
                 news_service.save_news_cache(fresh_news)
-                status_text.value = f"Updated just now · {len(fresh_news)} articles"
+                status_text.value = t("Updated just now · {count} articles", count=len(fresh_news))
             elif news_service.all_news_cache:
-                status_text.value = "Could not refresh · showing saved news"
+                status_text.value = t("Could not refresh · showing saved news")
             else:
-                status_text.value = "No connection · tap Retry"
+                status_text.value = t("No connection · tap Retry")
                 retry_button.visible = True
             render_current()
         finally:
@@ -359,7 +361,7 @@ def news_view_component(page: ft.Page, on_news_click, on_newsletter_click=None):
     ]
 
     if news_service.all_news_cache:
-        status_text.value = "Showing saved news · refreshing…"
+        status_text.value = t("Showing saved news · refreshing…")
         render_current()
 
     return view_container, update_news

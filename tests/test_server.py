@@ -324,3 +324,31 @@ def test_article_text_prefers_the_marked_story_area():
     assert "official website" not in server.extract_article_text(page)
     teaser = f"<html><body><article><p>Short teaser text that is long enough to count.</p></article>{story}</body></html>"
     assert "announced charges" in server.extract_article_text(teaser.encode())
+
+
+def test_chat_prompt_names_the_app_language():
+    turkish = server.build_prompt(server.ChatRequest(message="merhaba", lang="tr"))
+    assert "APP LANGUAGE" in turkish and "Turkish" in turkish
+    english = server.build_prompt(server.ChatRequest(message="hi"))
+    assert "APP LANGUAGE" not in english
+    assert server.language_note("xx") == ""
+
+
+def test_chat_rejects_a_malformed_language(client):
+    assert client.post("/v1/chat", json={"message": "hi", "lang": "turkish"}).status_code == 422
+
+
+def test_summaries_are_cached_per_language():
+    url = "https://example.com/a"
+    # English keeps the key the pre-written newsletter digest is stored under.
+    assert server.summary_cache_key("simple", url) == f"simple|{url}"
+    assert server.summary_cache_key("simple", url, "tr") == f"simple|tr|{url}"
+    assert "Turkish" in server.summary_instruction("brief", "tr")
+    assert server.summary_instruction("brief") == server.SUMMARY_INSTRUCTION
+
+
+def test_summary_language_is_validated(client, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    server._gemini_client.cache_clear()
+    response = client.get("/v1/news/summary", params={"url": "https://coindesk.com/a", "lang": "TR-tr"})
+    assert response.status_code == 422

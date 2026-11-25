@@ -9,7 +9,7 @@ from pathlib import Path
 
 import requests
 
-from services import news_service
+from services import i18n, news_service
 from services.net import session
 
 logger = logging.getLogger("bitpulse.ai")
@@ -50,6 +50,8 @@ def build_payload(
     article_url: str = "",
 ) -> dict:
     return {
+        # The server answers in this language unless the user clearly writes in another one.
+        "lang": i18n.language(),
         "article_url": article_url,
         "message": message,
         "history": [
@@ -183,7 +185,7 @@ def stream_chat_message(
     reply = "".join(parts).strip()
     if reply and failed:
         # Keep what arrived, but never pass a cut-off answer off as complete.
-        note = INTERRUPTED_NOTE
+        note = i18n.t(INTERRUPTED_NOTE)
         on_chunk(note)
         return reply + note, None
     if reply:

@@ -5,7 +5,9 @@ import threading
 import flet as ft
 
 import services.market_service as market_service
+from services import i18n
 from services.ai_service import get_api_url
+from services.i18n import t
 from views.ai_view import ai_view_component
 from views.market_view import market_view_component
 from views.news_detail_view import news_detail_view_component
@@ -34,7 +36,26 @@ def exit_with_the_screen(page: ft.Page) -> None:
     page.on_app_lifecycle_state_change = on_lifecycle
 
 
+def language_menu(on_change) -> ft.PopupMenuButton:
+    """Header button for the interface language; the current one is ticked."""
+    return ft.PopupMenuButton(
+        icon=ft.Icons.TRANSLATE_ROUNDED,
+        icon_color=ft.Colors.GREY_400,
+        icon_size=20,
+        tooltip=t("Language"),
+        items=[
+            ft.PopupMenuItem(
+                text=name,
+                checked=code == i18n.language(),
+                on_click=lambda _, c=code: on_change(c),
+            )
+            for code, name in i18n.LANGUAGES.items()
+        ],
+    )
+
+
 def main(page: ft.Page):
+    i18n.load_language()
     page.title = "BitPulse"
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
@@ -75,10 +96,19 @@ def main(page: ft.Page):
             on_click=lambda _: threading.Thread(target=update_news, daemon=True).start(),
             icon_color=ft.Colors.ORANGE_ACCENT,
             icon_size=20,
-            tooltip="Refresh news",
+            tooltip=t("Refresh news"),
         ),
         width=40,
     )
+
+    def change_language(code: str):
+        """Save the choice and build every screen again in the new language."""
+        if code == i18n.language():
+            return
+        i18n.set_language(code)
+        page.views.clear()
+        page.update()
+        main(page)
 
     def handle_nav_change(e):
         idx = e.control.selected_index
@@ -99,9 +129,9 @@ def main(page: ft.Page):
         on_change=handle_nav_change,
         bgcolor="#1A1A1A",
         destinations=[
-            ft.NavigationBarDestination(icon=ft.Icons.NEWSPAPER, label="News"),
-            ft.NavigationBarDestination(icon=ft.Icons.SMART_TOY, label="AI Assistant"),
-            ft.NavigationBarDestination(icon=ft.Icons.INSIGHTS, label="Market"),
+            ft.NavigationBarDestination(icon=ft.Icons.NEWSPAPER, label=t("News")),
+            ft.NavigationBarDestination(icon=ft.Icons.SMART_TOY, label=t("AI Assistant")),
+            ft.NavigationBarDestination(icon=ft.Icons.INSIGHTS, label=t("Market")),
         ],
     )
 
@@ -124,7 +154,7 @@ def main(page: ft.Page):
                         content=ft.Image(src="icon_clean.png", fit="cover"),
                     ),
                 ),
-                ft.Container(width=40),
+                ft.Container(width=40, content=language_menu(change_language)),
             ],
         ),
     )
