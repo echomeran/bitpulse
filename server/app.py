@@ -278,6 +278,9 @@ async def _article_context(payload: ChatRequest) -> str:
     url = payload.article_url
     if not url or not sources.is_allowed_article_url(url):
         return ""
+    # Publishers that have not agreed to AI use: the chat still sees the feed excerpt in news_items.
+    if _summaries_blocked(url):
+        return ""
     cached = _cached_article(url)
     if cached is not None:
         return cached
@@ -539,7 +542,11 @@ def bullet_lines_only(text: str) -> str:
 
 
 def _summaries_blocked(url: str) -> bool:
-    """Hosts listed in SUMMARY_BLOCKED_HOSTS get no AI summary: a switch for publisher requests."""
+    """Hosts in SUMMARY_BLOCKED_HOSTS are never fetched for AI use (summaries, chat context).
+
+    A switch for publishers whose terms require written consent for AI use; set in
+    scripts/deploy-cloudrun.ps1.
+    """
     blocked = tuple(h.strip().lower() for h in os.getenv("SUMMARY_BLOCKED_HOSTS", "").split(",") if h.strip())
     host = (urlparse(url).hostname or "").lower()
     return any(host == h or host.endswith("." + h) for h in blocked)

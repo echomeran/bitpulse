@@ -64,6 +64,16 @@ def test_article_context_skips_urls_outside_the_allowlist(url, monkeypatch):
     assert asyncio.run(server._article_context(payload)) == ""
 
 
+def test_article_context_skips_hosts_blocked_for_ai_use(monkeypatch):
+    def fail(*args, **kwargs):
+        raise AssertionError("must not fetch")
+
+    monkeypatch.setattr(server._session, "get", fail)
+    monkeypatch.setenv("SUMMARY_BLOCKED_HOSTS", "coindesk.com, cointelegraph.com")
+    payload = server.ChatRequest(message="hi", article_url="https://www.coindesk.com/markets/x")
+    assert asyncio.run(server._article_context(payload)) == ""
+
+
 class _Busy(server.genai_errors.ServerError):
     def __init__(self):
         super().__init__(503, {"error": {"message": "busy"}})
