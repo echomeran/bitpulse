@@ -238,6 +238,14 @@ def test_report_records_the_reply_in_the_log(client, caplog):
     assert '"answer": "Yes, guaranteed."' in line
 
 
+def test_report_keeps_the_reason_and_rejects_unknown_ones(client, caplog):
+    server.report_limiter._hits.clear()
+    with caplog.at_level("WARNING", logger="bitpulse-api"):
+        assert client.post("/v1/report", json={"answer": "x", "reason": "harmful"}).status_code == 200
+    assert any('"reason": "harmful"' in r.getMessage() for r in caplog.records)
+    assert client.post("/v1/report", json={"answer": "x", "reason": "spam"}).status_code == 422
+
+
 def test_report_rejects_an_empty_answer_and_floods(client, monkeypatch):
     server.report_limiter._hits.clear()
     assert client.post("/v1/report", json={"answer": ""}).status_code == 422

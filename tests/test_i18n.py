@@ -61,6 +61,7 @@ INDIRECT = {
     *(label for label in news_view.FILTERS if label not in {"Bitcoin", "DeFi"}),
     *(label for _, _, _, label in newsletter_view.SECTION_STYLES),
     newsletter_view.DEFAULT_SECTION_STYLE[2],
+    *chat_panel.REPORT_REASON_LABELS.values(),
     "Extreme Fear", "Fear", "Neutral", "Greed", "Extreme Greed",
     "1H", "1D", "1W", "1M", "1Y", "5Y",
 }

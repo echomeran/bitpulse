@@ -80,6 +80,52 @@ def create_chat_bubble(text, is_user):
     return row, label
 
 
+# Report reasons as the dialog shows them (English source text; the server gets the code).
+REPORT_REASON_LABELS = {
+    "wrong": "Wrong or misleading",
+    "harmful": "Harmful or dangerous",
+    "offensive": "Offensive",
+    "other": "Something else",
+}
+
+
+def report_dialog(on_send) -> ft.AlertDialog:
+    """Ask why before anything is sent, so a stray tap on "Report" reports nothing."""
+    reasons = ft.RadioGroup(
+        content=ft.Column(
+            [ft.Radio(value=code, label=t(label)) for code, label in REPORT_REASON_LABELS.items()],
+            spacing=0,
+            tight=True,
+        ),
+    )
+    send_button = ft.TextButton(t("Send"), disabled=True)
+    dialog = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(t("Report this answer"), size=18, weight="bold"),
+        content=ft.Column(
+            [ft.Text(t("What is wrong with it?"), size=13, color=ft.Colors.GREY_400), reasons],
+            tight=True,
+            spacing=8,
+        ),
+        actions=[ft.TextButton(t("Cancel")), send_button],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+
+    def choose(_):
+        send_button.disabled = not reasons.value
+        send_button.update()
+
+    reasons.on_change = choose
+    dialog.actions[0].on_click = lambda e: e.page.close(dialog)
+
+    def send(e):
+        e.page.close(dialog)
+        on_send(reasons.value)
+
+    send_button.on_click = send
+    return dialog
+
+
 def add_report_action(page: ft.Page, row: ft.Row, question: str, answer: str, article_url: str):
     """Put a small "Report" link under an AI reply. Google Play requires a way to flag AI output."""
     column = row.controls[0]
@@ -90,19 +136,19 @@ def add_report_action(page: ft.Page, row: ft.Row, question: str, answer: str, ar
         tooltip=t("Report this answer as wrong, harmful or offensive"),
     )
 
-    def send():
-        sent = report_reply(get_api_url(), question, answer, article_url)
+    def send(reason: str):
+        sent = report_reply(get_api_url(), question, answer, article_url, reason)
         link.text = t("Reported. Thank you.") if sent else t("Could not send report. Try again.")
         link.icon = ft.Icons.FLAG if sent else ft.Icons.FLAG_OUTLINED
         link.disabled = sent
         page.update()
 
-    async def on_click(_):
+    def start_sending(reason: str):
         link.disabled = True
         page.update()
-        await asyncio.to_thread(send)
+        page.run_thread(send, reason)
 
-    link.on_click = on_click
+    link.on_click = lambda _: page.open(report_dialog(start_sending))
     column.controls.append(link)
 
 

@@ -193,11 +193,20 @@ def stream_chat_message(
     return None, error if failed else ERR_EMPTY
 
 
-def report_reply(api_url: str, question: str, answer: str, article_url: str = "") -> bool:
+# Report reasons the server accepts, in the order the dialog lists them.
+REPORT_REASONS = ("wrong", "harmful", "offensive", "other")
+
+
+def report_reply(api_url: str, question: str, answer: str, article_url: str = "", reason: str = "") -> bool:
     """Send a user's report of an AI reply to the backend; return True when it was recorded."""
     if not api_url:
         return False
-    payload = {"question": question[:600], "answer": answer[:8000], "article_url": article_url[:2000]}
+    payload = {
+        "question": question[:600],
+        "answer": answer[:8000],
+        "article_url": article_url[:2000],
+        "reason": reason if reason in REPORT_REASONS else "",
+    }
     try:
         response = session.post(f"{api_url}/v1/report", json=payload, timeout=15)
     except requests.RequestException as exc:

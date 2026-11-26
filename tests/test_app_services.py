@@ -230,6 +230,29 @@ def test_report_reply_posts_the_exchange(monkeypatch):
     assert sent["url"] == "https://api/v1/report"
     assert len(sent["body"]["question"]) == 600 and sent["body"]["answer"] == "bad answer"
     assert ai_service.report_reply("", "q", "a") is False
+    assert sent["body"]["reason"] == ""
+
+
+def test_report_reply_sends_only_known_reasons(monkeypatch):
+    sent = {}
+    monkeypatch.setattr(
+        ai_service.session, "post",
+        lambda url, json, timeout: sent.update(body=json) or type("R", (), {"status_code": 200})(),
+    )
+    ai_service.report_reply("https://api", "q", "a", reason="harmful")
+    assert sent["body"]["reason"] == "harmful"
+    ai_service.report_reply("https://api", "q", "a", reason="spam")
+    assert sent["body"]["reason"] == ""
+
+
+def test_report_dialog_sends_nothing_until_a_reason_is_chosen():
+    from views.chat_panel import REPORT_REASON_LABELS, report_dialog
+
+    chosen = []
+    dialog = report_dialog(chosen.append)
+    cancel, send = dialog.actions
+    assert send.disabled and not chosen
+    assert set(REPORT_REASON_LABELS) == set(ai_service.REPORT_REASONS)
 
 
 def test_newsletter_read_state_only_moves_forward(tmp_path, monkeypatch):

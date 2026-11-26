@@ -412,6 +412,8 @@ class ReportRequest(BaseModel):
     question: str = Field(default="", max_length=600)
     answer: str = Field(min_length=1, max_length=8000)
     article_url: str = Field(default="", max_length=2000)
+    # Chosen in the app's report dialog; apps before v1.0.16 send none.
+    reason: str = Field(default="", pattern="^(|wrong|harmful|offensive|other)$")
 
 
 @app.post("/v1/report")
