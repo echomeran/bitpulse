@@ -83,9 +83,27 @@ def test_translations_keep_the_placeholders(code):
     assert not wrong
 
 
-def test_no_translation_key_is_left_unused():
+@pytest.mark.parametrize("code", [c for c in i18n.LANGUAGES if c != "en"])
+def test_no_translation_key_is_left_unused(code):
     used = literal_t_calls() | INDIRECT | {"{n}m ago", "{n}h ago", "{n}d ago"}
-    assert not sorted(set(i18n.STRINGS["tr"]) - used)
+    labels = {label for _, _, _, label in newsletter_view.SECTION_STYLES} | {newsletter_view.DEFAULT_SECTION_STYLE[2]}
+    used |= {f"{label}|one" for label in labels}
+    assert not sorted(set(i18n.STRINGS[code]) - used)
+
+
+def test_every_language_names_twelve_months():
+    assert all(len(months) == 12 for months in i18n.MONTHS.values())
+    assert set(i18n.MONTHS) == set(i18n.STRINGS) == set(i18n.LANGUAGES) - {"en"}
+
+
+def test_spanish_and_portuguese_counts_use_the_singular_for_one():
+    i18n.set_language("es", save=False)
+    assert i18n.count_label(1, "releases") == "1 lanzamiento"
+    assert i18n.count_label(3, "releases") == "3 lanzamientos"
+    i18n.set_language("pt", save=False)
+    assert i18n.count_label(1, "code changes") == "1 mudança de código"
+    assert i18n.relative_time(0, now=7200) == "há 2 h"
+    assert i18n.short_date(datetime(2026, 9, 5)) == "05 set"
 
 
 def test_t_falls_back_to_english_and_fills_placeholders():

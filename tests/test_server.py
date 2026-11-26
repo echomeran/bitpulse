@@ -366,3 +366,13 @@ def test_a_summary_cut_off_at_the_token_cap_keeps_only_whole_lines():
     client = SimpleNamespace(models=SimpleNamespace(generate_content=lambda **_: cut))
     assert server._summarize(client, "text") == "- First whole point.\n- Second whole point."
     assert server.drop_unfinished_line("- only line, cut") == ""
+
+
+def test_every_app_language_has_a_name_for_the_model():
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from services import i18n
+
+    assert set(i18n.LANGUAGES) <= set(server.LANGUAGE_NAMES)

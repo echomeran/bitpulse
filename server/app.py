@@ -167,7 +167,7 @@ class ChatRequest(BaseModel):
 
 
 # Interface languages the app offers, by code. Replies and summaries are written in these.
-LANGUAGE_NAMES = {"en": "English", "tr": "Turkish"}
+LANGUAGE_NAMES = {"en": "English", "es": "Spanish", "pt": "Brazilian Portuguese", "tr": "Turkish"}
 
 
 def language_note(lang: str) -> str:

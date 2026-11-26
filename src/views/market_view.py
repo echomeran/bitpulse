@@ -53,7 +53,7 @@ def market_view_component(page: ft.Page):
         weight="bold",
         animate_opacity=ft.Animation(400, ft.AnimationCurve.EASE_OUT),
     )
-    fng_label = ft.Text(t("Loading..."), size=12, color=ft.Colors.GREY_500)
+    fng_label = ft.Text(t("Loading..."), size=12, color=ft.Colors.GREY_500, max_lines=2)
     fng_ring = ft.ProgressRing(
         width=40, height=40, stroke_width=5, value=0.0, bgcolor="#1E293B"
     )
@@ -407,9 +407,16 @@ def market_view_component(page: ft.Page):
                             color=ft.Colors.GREY_500,
                             weight="bold",
                         ),
-                        ft.Row([fng_value, fng_label], spacing=6),
+                        # The label may wrap to two lines: "Miedo extremo" or "Aşırı Açgözlülük"
+                        # does not fit beside the number on a phone.
+                        ft.Row(
+                            [fng_value, ft.Container(content=fng_label, expand=True)],
+                            spacing=6,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
                     ],
                     spacing=0,
+                    expand=True,
                 ),
             ]
         ),
